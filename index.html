@@ -20,13 +20,6 @@
       .muted { color: #666; }
 
       .mk { width: 22px; height: 22px; border-radius: 999px; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
-
-      /* Marqueur utilisateur (dot + flèche orientée) */
-      .me-wrap { width: 26px; height: 26px; position: relative; transform-origin: 50% 50%; }
-      .me-dot  { position:absolute; left:5px; top:5px; width:16px; height:16px; border-radius:999px; background:#0a84ff; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.25); }
-      .me-arrow{ position:absolute; left:50%; top:-2px; margin-left:-4px; width:0; height:0;
-                 border-left:4px solid transparent; border-right:4px solid transparent; border-bottom:8px solid #0a84ff;
-                 filter: drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
     </style>
   </head>
   <body>
@@ -55,33 +48,34 @@
       function App(){
         const mapRef = React.useRef(null);
         const containerRef = React.useRef(null);
-
-        const userWrapRef   = React.useRef(null);   // flèche + dot (HTML)
-        const userMarkerRef = React.useRef(null);   // marker MapLibre qui porte le HTML
-        const [accLayerReady, setAccLayerReady] = React.useState(false);
+        const geoRef = React.useRef(null); // GeolocateControl
 
         const [points,setPoints] = React.useState(function(){ try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(e){ return []; } });
         const [adding,setAdding] = React.useState(false);
         const [showList,setShowList] = React.useState(false);
         const [showImport,setShowImport] = React.useState(false);
-        const [userPos,setUserPos] = React.useState(null); // {lng,lat,acc}
-        const [heading,setHeading] = React.useState(null); // degrés 0..360
 
         React.useEffect(function(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(points)); }, [points]);
 
-        /* Init carte */
+        /* Init carte + contrôles */
         React.useEffect(function(){
           if(mapRef.current||!containerRef.current) return;
           var map = new maplibregl.Map({ container: containerRef.current, style: OSM_RASTER_STYLE, center: [-4.4861,48.3904], zoom: 12, attributionControl: true });
-          map.addControl(new maplibregl.NavigationControl({showCompass:true}), 'bottom-right');
           mapRef.current = map;
 
-          map.on('load', function(){ renderMarkers(); });
+          map.addControl(new maplibregl.NavigationControl({showCompass:true}), 'bottom-right');
 
-          // Recalcule rayon/rotation à chaque mouvement/rotation/zoom
-          ['move','zoom','rotate','pitch'].forEach(function(ev){
-            map.on(ev, function(){ if(userPos){ updateAccuracyCircle(userPos.lng, userPos.lat, userPos.acc); rotateForMapBearing(); } });
+          // Geolocate natif: montre 1 seul dot + cercle
+          var geo = new maplibregl.GeolocateControl({
+            positionOptions: { enableHighAccuracy: true },
+            trackUserLocation: true,
+            showUserLocation: true,
+            showAccuracyCircle: true
           });
+          map.addControl(geo, 'bottom-right');
+          geoRef.current = geo;
+
+          map.on('load', function(){ renderMarkers(); try { geo.trigger(); } catch(e) {} });
 
           // Long-press pour ajouter
           var t=null;
@@ -89,95 +83,7 @@
           map.on('touchend',   function(){ if(t){ clearTimeout(t); t=null; } });
         }, [adding]);
 
-        /* GPS: suivi + mise à jour du marqueur ORIENTÉ + cercle précision (custom) */
-        React.useEffect(function(){
-          if(!('geolocation' in navigator)) return;
-          var id = navigator.geolocation.watchPosition(function(pos){
-            var lng = pos.coords.longitude, lat = pos.coords.latitude, acc = pos.coords.accuracy || 30;
-            setUserPos({ lng: lng, lat: lat, acc: acc });
-            ensureUserMarker(); userMarkerRef.current.setLngLat([lng, lat]);
-            updateAccuracyCircle(lng, lat, acc);
-            // heading GPS (utile en déplacement)
-            if (typeof pos.coords.heading === 'number' && !isNaN(pos.coords.heading)) { setHeading(pos.coords.heading); rotateForMapBearing(); }
-          }, function(err){ console.warn('Geolocation error:', err && err.message); }, { enableHighAccuracy:true, maximumAge:5000, timeout:15000 });
-          return function(){ if(navigator.geolocation.clearWatch) navigator.geolocation.clearWatch(id); };
-        }, []);
-
         React.useEffect(function(){ renderMarkers(); }, [points]);
-
-        /* Boussole (DeviceOrientation) — clique sur “🧭 Boussole” pour iOS */
-        function enableCompass(){
-          if (window.DeviceOrientationEvent && typeof window.DeviceOrientationEvent.requestPermission === 'function') {
-            window.DeviceOrientationEvent.requestPermission().then(function(resp){
-              if (resp === 'granted') listenOrientation();
-              else alert('Permission boussole refusée');
-            }).catch(function(){ alert('Boussole non disponible'); });
-          } else if (window.DeviceOrientationEvent) {
-            listenOrientation();
-          } else {
-            alert('Boussole non disponible sur ce navigateur');
-          }
-        }
-        function listenOrientation(){
-          window.addEventListener('deviceorientation', function(e){
-            var h = null;
-            if (typeof e.webkitCompassHeading === 'number') {
-              h = e.webkitCompassHeading; // iOS : 0 = Nord
-            } else if (typeof e.alpha === 'number') {
-              // Android: alpha(0=Est) -> cap (0=Nord)
-              h = (360 - e.alpha + 90) % 360; if (h < 0) h += 360;
-            }
-            if (h !== null) { setHeading(h); rotateForMapBearing(); }
-          }, true);
-        }
-
-        function metersPerPixelAtLat(zoom, lat){
-          // formule Mercator Web : 156543.03392 * cos(lat) / 2^zoom  (mètres / pixel)
-          return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
-        }
-
-        function updateAccuracyCircle(lng, lat, acc){
-          var map = mapRef.current; if(!map) return;
-          var center = [lng, lat];
-
-          if (!accLayerReady) {
-            map.addSource('user-acc-src', { type:'geojson', data:{ type:'FeatureCollection', features:[{ type:'Feature', geometry:{ type:'Point', coordinates:center } }] } });
-            map.addLayer({ id:'user-accuracy', type:'circle', source:'user-acc-src',
-              paint:{ 'circle-radius': 20, 'circle-color':'#0a84ff22', 'circle-stroke-width':1, 'circle-stroke-color':'#0a84ff66' }
-            });
-            setAccLayerReady(true);
-          } else {
-            map.getSource('user-acc-src').setData({ type:'FeatureCollection', features:[{ type:'Feature', geometry:{ type:'Point', coordinates:center } }] });
-          }
-
-          // Convertit la précision (m) en pixels au zoom/latitude actuels
-          var mpp = metersPerPixelAtLat(map.getZoom(), lat);          // mètres/pixel
-          var radiusPx = Math.max(5, Math.min(acc || 30, 400)) / mpp; // bornes pour éviter les énormes cercles
-          map.setPaintProperty('user-accuracy', 'circle-radius', radiusPx);
-        }
-
-        function ensureUserMarker(){
-          var map = mapRef.current; if(!map) return;
-          if (!userWrapRef.current) {
-            var wrap = document.createElement('div'); wrap.className = 'me-wrap';
-            var arrow = document.createElement('div'); arrow.className = 'me-arrow';
-            var dot   = document.createElement('div'); dot.className   = 'me-dot';
-            wrap.appendChild(arrow); wrap.appendChild(dot);
-            userWrapRef.current = wrap;
-          }
-          if (!userMarkerRef.current) {
-            userMarkerRef.current = new maplibregl.Marker({ element: userWrapRef.current }).setLngLat(map.getCenter()).addTo(map);
-          }
-        }
-
-        function rotateForMapBearing(){
-          // Fait pointer la flèche vers la direction réelle à l’écran (heading - bearing de la carte)
-          if (userWrapRef.current && heading !== null && mapRef.current) {
-            var bearing = mapRef.current.getBearing() || 0; // degrés (Est=90, Nord=0)
-            var angle = (heading - bearing + 360) % 360;
-            userWrapRef.current.style.transform = 'rotate(' + angle + 'deg)';
-          }
-        }
 
         function renderMarkers(){
           var map = mapRef.current; if(!map) return;
@@ -196,9 +102,10 @@
         }
 
         function addAtCenter(){ var c = mapRef.current.getCenter(); addAt(c.lng, c.lat); }
+
         function centerOnMe(){
-          if(userPos) mapRef.current.flyTo({ center:[userPos.lng,userPos.lat], zoom:16, essential:true });
-          else alert('Active la localisation pour te centrer 🙂');
+          // Relance la géoloc native (recentrage + maj dot/cercle)
+          if (geoRef.current && typeof geoRef.current.trigger === 'function') { try { geoRef.current.trigger(); return; } catch(e){} }
         }
 
         function exportJSON(){
@@ -231,7 +138,6 @@
             <div className="fabs">
               <button className="fab" onClick={addAtCenter}>Ajouter au centre</button>
               <button className="fab" onClick={centerOnMe}>Moi</button>
-              <button className="fab" onClick={enableCompass}>🧭 Boussole</button>
               <button className="fab" onClick={function(){ setShowImport(true); }}>⋯</button>
             </div>
 
@@ -305,7 +211,7 @@
                   <div className="muted" style={{fontSize:12,display:'grid',gap:4}}>
                     <div>• Active « Ajout » puis fais un <b>appui long</b> sur la carte pour créer un lieu.</div>
                     <div>• Les marqueurs sont <b>déplaçables</b>. Tout est sauvegardé en local (localStorage).</div>
-                    <div>• Bouton <b>Moi</b> pour te recentrer. Active la <b>🧭 Boussole</b> pour la flèche.</div>
+                    <div>• Bouton <b>Moi</b> pour te recentrer.</div>
                   </div>
                 </div>
               </div>
