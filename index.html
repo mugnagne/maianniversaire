@@ -5,9 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Brest Pocket Guide</title>
 
-    <!-- MapLibre CSS -->
     <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" />
-
     <style>
       html, body, #root { height: 100%; margin: 0; }
       #map { position: absolute; inset: 0; }
@@ -22,44 +20,28 @@
       .muted { color: #666; }
 
       .mk { width: 22px; height: 22px; border-radius: 999px; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
-
-      /* Point bleu user en HTML (au cas où le layer n'apparaît pas) */
       .me-dot { width: 16px; height: 16px; border-radius: 999px; background: #0a84ff; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
     </style>
   </head>
   <body>
     <div id="root"></div>
 
-    <!-- React + ReactDOM via CDN -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-    <!-- Babel pour JSX -->
     <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
-    <!-- MapLibre via CDN -->
     <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
 
     <script type="text/babel" data-presets="react">
       function rndId() {
-        if (window.crypto && typeof window.crypto.randomUUID === 'function') {
-          return window.crypto.randomUUID();
-        }
+        if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
         return 'id-' + Math.random().toString(36).slice(2);
       }
 
-      // Style MapLibre : tuiles OpenStreetMap raster (routes + noms)
+      // Style OSM raster (routes + noms, sans clé)
       var OSM_RASTER_STYLE = {
         "version": 8,
-        "sources": {
-          "osm": {
-            "type": "raster",
-            "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-            "tileSize": 256,
-            "attribution": "© OpenStreetMap contributors"
-          }
-        },
-        "layers": [
-          { "id": "osm-tiles", "type": "raster", "source": "osm" }
-        ]
+        "sources": { "osm": { "type": "raster", "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], "tileSize": 256, "attribution": "© OpenStreetMap contributors" } },
+        "layers": [{ "id": "osm-tiles", "type": "raster", "source": "osm" }]
       };
 
       const STORAGE_KEY = 'brest-guide-points-v1';
@@ -68,10 +50,7 @@
         const mapRef = React.useRef(null);
         const containerRef = React.useRef(null);
         const userMarkerRef = React.useRef(null); // fallback HTML marker
-        const [points,setPoints] = React.useState(function(){
-          try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
-          catch(e) { return []; }
-        });
+        const [points,setPoints] = React.useState(function(){ try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(e){ return []; } });
         const [adding,setAdding] = React.useState(false);
         const [showList,setShowList] = React.useState(false);
         const [showImport,setShowImport] = React.useState(false);
@@ -79,50 +58,40 @@
 
         React.useEffect(function(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(points)); }, [points]);
 
-        // Init map (style OSM raster)
         React.useEffect(function(){
           if(mapRef.current||!containerRef.current) return;
-          var map = new maplibregl.Map({
-            container: containerRef.current,
-            style: OSM_RASTER_STYLE,
-            center: [-4.4861,48.3904], // Brest
-            zoom: 12,
-            attributionControl: true
-          });
-          map.addControl(new maplibregl.NavigationControl({showCompass:false}), 'bottom-right');
+          var map = new maplibregl.Map({ container: containerRef.current, style: OSM_RASTER_STYLE, center: [-4.4861,48.3904], zoom: 12, attributionControl: true });
           mapRef.current = map;
+
+          // Contrôles: navigation + géoloc natif (dot + cercle)
+          map.addControl(new maplibregl.NavigationControl({showCompass:false}), 'bottom-right');
+          var geo = new maplibregl.GeolocateControl({
+            positionOptions: { enableHighAccuracy: true },
+            trackUserLocation: true,        // suit en live
+            showUserLocation: true,         // point bleu
+            showAccuracyCircle: true        // cercle bleu
+          });
+          map.addControl(geo, 'bottom-right');
 
           map.on('load', function(){
             renderMarkers();
-            drawUserLayers();
+            // Trigger la geoloc une fois au chargement pour afficher le dot immédiatement
+            try { geo.trigger(); } catch(e) {}
           });
 
           // Long-press pour ajouter (mobile)
           var t=null;
-          map.on('touchstart', function(e){
-            if(!adding) return;
-            t = setTimeout(function(){ addAt(e.lngLat.lng, e.lngLat.lat); }, 450);
-          });
+          map.on('touchstart', function(e){ if(!adding) return; t = setTimeout(function(){ addAt(e.lngLat.lng, e.lngLat.lat); }, 450); });
           map.on('touchend', function(){ if(t){ clearTimeout(t); t=null; } });
         }, [adding]);
 
-        // Forcer une demande de permission au démarrage (une fois)
-        React.useEffect(function(){
-          if(!('geolocation' in navigator)) return;
-          navigator.geolocation.getCurrentPosition(function(pos){
-            var lng = pos.coords.longitude, lat = pos.coords.latitude, acc = pos.coords.accuracy || 30;
-            setUserPos({ lng: lng, lat: lat, acc: acc });
-            drawUserLayers();
-          }, function(){ /* ignore */ }, { enableHighAccuracy:true, maximumAge:0, timeout:10000 });
-        }, []);
-
-        // Watch continu
+        // Watch manuel (garde la compat avec notre bouton "Moi" et le fallback)
         React.useEffect(function(){
           if(!('geolocation' in navigator)) return;
           var id = navigator.geolocation.watchPosition(function(pos){
             var lng = pos.coords.longitude, lat = pos.coords.latitude, acc = pos.coords.accuracy || 30;
             setUserPos({ lng: lng, lat: lat, acc: acc });
-            drawUserLayers();
+            drawUserFallback();
           }, function(err){ console.warn('Geolocation error:', err && err.message); }, { enableHighAccuracy:true, maximumAge:5000, timeout:15000 });
           return function(){ if(navigator.geolocation.clearWatch) navigator.geolocation.clearWatch(id); };
         }, []);
@@ -130,81 +99,32 @@
         React.useEffect(function(){ renderMarkers(); }, [points]);
 
         function renderMarkers(){
-          var map = mapRef.current;
-          if(!map) return;
+          var map = mapRef.current; if(!map) return;
           document.querySelectorAll('.mk').forEach(function(el){ el.remove(); });
           points.forEach(function(p){
-            var el = document.createElement('div');
-            el.className = 'mk';
-            el.style.background = p.color || '#FF3366';
-            var m = new maplibregl.Marker({element: el, draggable: true})
-              .setLngLat([p.lng, p.lat])
-              .addTo(map);
-            m.on('dragend', function(){
-              var c = m.getLngLat();
-              setPoints(function(prev){
-                return prev.map(function(x){
-                  return x.id === p.id ? Object.assign({}, x, { lng: c.lng, lat: c.lat }) : x;
-                });
-              });
-            });
+            var el = document.createElement('div'); el.className = 'mk'; el.style.background = p.color || '#FF3366';
+            var m = new maplibregl.Marker({element: el, draggable: true}).setLngLat([p.lng, p.lat]).addTo(map);
+            m.on('dragend', function(){ var c = m.getLngLat(); setPoints(function(prev){ return prev.map(function(x){ return x.id===p.id ? Object.assign({}, x, { lng:c.lng, lat:c.lat }) : x; }); }); });
           });
         }
 
-        // Calque position utilisateur : cercle + point (et fallback marker HTML)
-        function drawUserLayers(){
-          var map = mapRef.current;
-          if(!map || !userPos) return;
-
+        // Fallback: un dot HTML bleu pour l'utilisateur (au-dessus de tout)
+        function drawUserFallback(){
+          var map = mapRef.current; if(!map || !userPos) return;
           var center = [userPos.lng, userPos.lat];
-
-          // Fallback marker HTML (toujours visible)
           if(!userMarkerRef.current){
-            var el = document.createElement('div');
-            el.className = 'me-dot';
+            var el = document.createElement('div'); el.className = 'me-dot';
             userMarkerRef.current = new maplibregl.Marker({ element: el }).setLngLat(center).addTo(map);
-          } else {
-            userMarkerRef.current.setLngLat(center);
-          }
-
-          // Layers MapLibre (si style prêt)
-          if (typeof map.isStyleLoaded === 'function' && !map.isStyleLoaded()) return;
-
-          if(!map.getSource('user-point-src')){
-            map.addSource('user-point-src', { type:'geojson', data:{ type:'FeatureCollection', features:[{ type:'Feature', geometry:{ type:'Point', coordinates:center } }] } });
-            map.addLayer({ id:'user-point', type:'circle', source:'user-point-src', paint:{ 'circle-radius':6, 'circle-color':'#007AFF', 'circle-stroke-width':2, 'circle-stroke-color':'#fff' }});
-          } else {
-            map.getSource('user-point-src').setData({ type:'FeatureCollection', features:[{ type:'Feature', geometry:{ type:'Point', coordinates:center } }] });
-          }
-
-          var meters = Math.max(5, Math.min(userPos.acc, 200));
-          var metersToPixelsAtLat = function(m, lat){ return m / (0.075 * Math.cos((lat * Math.PI)/180)); };
-          var radiusPx = metersToPixelsAtLat(meters, userPos.lat);
-
-          if(!map.getSource('user-acc-src')){
-            map.addSource('user-acc-src', { type:'geojson', data:{ type:'FeatureCollection', features:[{ type:'Feature', geometry:{ type:'Point', coordinates:center } }] } });
-            map.addLayer({ id:'user-accuracy', type:'circle', source:'user-acc-src',
-              paint:{ 'circle-radius': radiusPx, 'circle-color':'#007AFF22', 'circle-stroke-width':1, 'circle-stroke-color':'#007AFF66' }
-            }, 'user-point');
-          } else {
-            map.getSource('user-acc-src').setData({ type:'FeatureCollection', features:[{ type:'Feature', geometry:{ type:'Point', coordinates:center } }] });
-            map.setPaintProperty('user-accuracy', 'circle-radius', radiusPx);
-          }
+          } else { userMarkerRef.current.setLngLat(center); }
         }
 
         function addAt(lng,lat){
-          var title = prompt('Titre du lieu ?','Nouveau point');
-          if(title===null) return;
+          var title = prompt('Titre du lieu ?','Nouveau point'); if(title===null) return;
           var color = prompt('Couleur hex (optionnel)','\\#FF3366') || '#FF3366';
-          setPoints(function(prev){
-            return prev.concat([{ id:rndId(), title:(title.trim()||'Point'), notes:'', lng: lng, lat: lat, color: color }]);
-          });
+          setPoints(function(prev){ return prev.concat([{ id:rndId(), title:(title.trim()||'Point'), notes:'', lng: lng, lat: lat, color: color }]); });
         }
 
-        function addAtCenter(){
-          var c = mapRef.current.getCenter();
-          addAt(c.lng, c.lat);
-        }
+        function addAtCenter(){ var c = mapRef.current.getCenter(); addAt(c.lng, c.lat); }
 
         function centerOnMe(){
           if(userPos) mapRef.current.flyTo({ center:[userPos.lng,userPos.lat], zoom:16, essential:true });
@@ -213,16 +133,12 @@
 
         function exportJSON(){
           var blob = new Blob([JSON.stringify(points, null, 2)], { type:'application/json' });
-          var url = URL.createObjectURL(blob);
-          var a = document.createElement('a');
-          a.href = url; a.download = 'brest-guide-points.json'; a.click();
-          URL.revokeObjectURL(url);
+          var url = URL.createObjectURL(blob); var a = document.createElement('a');
+          a.href = url; a.download = 'brest-guide-points.json'; a.click(); URL.revokeObjectURL(url);
         }
 
         function importJSON(text){
-          try{
-            var parsed = JSON.parse(text);
-            if(!Array.isArray(parsed)) throw new Error('Format invalide');
+          try{ var parsed = JSON.parse(text); if(!Array.isArray(parsed)) throw new Error('Format invalide');
             setPoints(parsed.map(function(p){ return Object.assign({}, p, { id: p.id || rndId() }); }));
           } catch(e){ alert('JSON invalide'); }
         }
@@ -231,7 +147,6 @@
           <div style={{height:'100%'}}>
             <div id="map" ref={containerRef}></div>
 
-            {/* Barre haute */}
             <div className="topbar">
               <div className="card"><b>Brest Pocket Guide</b></div>
               <div style={{display:'flex',gap:8}}>
@@ -243,14 +158,12 @@
               </div>
             </div>
 
-            {/* Boutons bas */}
             <div className="fabs">
               <button className="fab" onClick={addAtCenter}>Ajouter au centre</button>
               <button className="fab" onClick={centerOnMe}>Moi</button>
               <button className="fab" onClick={function(){ setShowImport(true); }}>⋯</button>
             </div>
 
-            {/* Tiroir liste */}
             {showList && (
               <div className="drawer" role="dialog" aria-label="Mes lieux">
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
@@ -269,42 +182,19 @@
                       <li key={p.id} className="list-item">
                         <div style={{display:'flex',alignItems:'center',gap:8}}>
                           <div className="mk" style={{background:p.color||'#FF3366'}}></div>
-                          <input
-                            value={p.title}
-                            onChange={function(e){
-                              setPoints(function(prev){
-                                return prev.map(function(x){
-                                  return x.id===p.id ? Object.assign({}, x, { title: e.target.value }) : x;
-                                });
-                              });
-                            }}
-                            style={{fontWeight:700,border:'none',outline:'none',flex:1}}
-                          />
+                          <input value={p.title} onChange={function(e){
+                            setPoints(function(prev){ return prev.map(function(x){ return x.id===p.id ? Object.assign({}, x, { title: e.target.value }) : x; }); });
+                          }} style={{fontWeight:700,border:'none',outline:'none',flex:1}} />
                           <button onClick={function(){ mapRef.current.flyTo({center:[p.lng,p.lat], zoom:16, essential:true}); }}>Voir</button>
-                          <button onClick={function(){
-                            setPoints(function(prev){ return prev.filter(function(x){ return x.id!==p.id; }); });
-                          }} style={{color:'#d00'}}>Supprimer</button>
+                          <button onClick={function(){ setPoints(function(prev){ return prev.filter(function(x){ return x.id!==p.id; }); }); }} style={{color:'#d00'}}>Supprimer</button>
                         </div>
-                        <textarea
-                          placeholder="Notes (horaires, tips, etc.)"
-                          value={p.notes||''}
-                          onChange={function(e){
-                            setPoints(function(prev){
-                              return prev.map(function(x){
-                                return x.id===p.id ? Object.assign({}, x, { notes: e.target.value }) : x;
-                              });
-                            });
-                          }}
-                          style={{border:'1px solid #eee',borderRadius:10,padding:8,minHeight:60}}
-                        ></textarea>
+                        <textarea placeholder="Notes (horaires, tips, etc.)" value={p.notes||''} onChange={function(e){
+                          setPoints(function(prev){ return prev.map(function(x){ return x.id===p.id ? Object.assign({}, x, { notes: e.target.value }) : x; }); });
+                        }} style={{border:'1px solid #eee',borderRadius:10,padding:8,minHeight:60}}></textarea>
                         <div style={{display:'flex',alignItems:'center',gap:8,fontSize:12}} className="muted">
                           <label>Couleur</label>
                           <input type="color" value={p.color||'#FF3366'} onChange={function(e){
-                            setPoints(function(prev){
-                              return prev.map(function(x){
-                                return x.id===p.id ? Object.assign({}, x, { color: e.target.value }) : x;
-                              });
-                            });
+                            setPoints(function(prev){ return prev.map(function(x){ return x.id===p.id ? Object.assign({}, x, { color: e.target.value }) : x; }); });
                           }}/>
                           <span>({p.lat.toFixed(5)}, {p.lng.toFixed(5)})</span>
                         </div>
@@ -315,7 +205,6 @@
               </div>
             )}
 
-            {/* Modal import / astuces */}
             {showImport && (
               <div onClick={function(){ setShowImport(false); }} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.3)',backdropFilter:'blur(2px)',display:'flex',alignItems:'flex-end',justifyContent:'center',padding:16}}>
                 <div onClick={function(e){ e.stopPropagation(); }} style={{background:'#fff',borderRadius:24,boxShadow:'0 12px 32px rgba(0,0,0,.25)',padding:16,width:'100%',maxWidth:560}}>
@@ -328,10 +217,8 @@
                     <button className="fab" style={{padding:'8px 12px'}} onClick={function(){ setShowImport(false); }}>Fermer</button>
                     <div style={{display:'flex',gap:8}}>
                       <button className="fab" style={{padding:'8px 12px'}} onClick={function(){
-                        var ta=document.getElementById('import-ta');
-                        if(!ta) return;
-                        importJSON(ta.value);
-                        setShowImport(false);
+                        var ta=document.getElementById('import-ta'); if(!ta) return;
+                        importJSON(ta.value); setShowImport(false);
                       }}>Importer</button>
                       <button className="fab" style={{padding:'8px 12px'}} onClick={function(){
                         var demo = [
@@ -339,8 +226,7 @@
                           { id:rndId(), title:'Les Viviers de Keraliou', lng:-4.5305, lat:48.3696, notes:'Fruits de mer', color:'#FF3366' },
                           { id:rndId(), title:'Musée national de la Marine', lng:-4.4952, lat:48.3834, notes:'Château de Brest', color:'#FF8A00' },
                         ];
-                        setPoints(demo);
-                        setShowImport(false);
+                        setPoints(demo); setShowImport(false);
                       }}>Charger des exemples</button>
                     </div>
                   </div>
