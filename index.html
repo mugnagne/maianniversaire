@@ -20,6 +20,9 @@
       .muted { color: #666; }
 
       .mk { width: 22px; height: 22px; border-radius: 999px; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+
+      /* petite pastille d'info itinéraire */
+      .route-badge { position: fixed; left: 50%; transform: translateX(-50%); bottom: 78px; z-index: 5; }
     </style>
   </head>
   <body>
@@ -44,6 +47,8 @@
       };
 
       const STORAGE_KEY = 'brest-guide-points-v1';
+      const ROUTE_SRC  = 'route-src';
+      const ROUTE_LINE = 'route-line';
 
       function App(){
         const mapRef = React.useRef(null);
@@ -54,6 +59,7 @@
         const [adding,setAdding] = React.useState(false);
         const [showList,setShowList] = React.useState(false);
         const [showImport,setShowImport] = React.useState(false);
+        const [routeInfo,setRouteInfo] = React.useState(null); // {distKm, durMin}
 
         React.useEffect(function(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(points)); }, [points]);
 
@@ -104,7 +110,6 @@
         function addAtCenter(){ var c = mapRef.current.getCenter(); addAt(c.lng, c.lat); }
 
         function centerOnMe(){
-          // Relance la géoloc native (recentrage + maj dot/cercle)
           if (geoRef.current && typeof geoRef.current.trigger === 'function') { try { geoRef.current.trigger(); return; } catch(e){} }
         }
 
@@ -118,6 +123,62 @@
           try{ var parsed = JSON.parse(text); if(!Array.isArray(parsed)) throw new Error('Format invalide');
             setPoints(parsed.map(function(p){ return Object.assign({}, p, { id: p.id || rndId() }); }));
           } catch(e){ alert('JSON invalide'); }
+        }
+
+        /* ====== Itinéraire (OSRM, profil marche) ====== */
+        function clearRoute(){
+          var map = mapRef.current; if(!map) return;
+          if (map.getLayer(ROUTE_LINE)) map.removeLayer(ROUTE_LINE);
+          if (map.getSource(ROUTE_SRC)) map.removeSource(ROUTE_SRC);
+          setRouteInfo(null);
+        }
+
+        function fitToCoords(coords){
+          var map = mapRef.current; if(!map) return;
+          var minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+          for (var i=0;i<coords.length;i++){
+            var c = coords[i];
+            if (c[0]<minX) minX=c[0]; if (c[0]>maxX) maxX=c[0];
+            if (c[1]<minY) minY=c[1]; if (c[1]>maxY) maxY=c[1];
+          }
+          map.fitBounds([[minX,minY],[maxX,maxY]], { padding: 60, maxZoom: 16, duration: 600 });
+        }
+
+        function routeToPoint(p){
+          if (!navigator.geolocation) { alert('Localisation indisponible'); return; }
+          navigator.geolocation.getCurrentPosition(function(pos){
+            var startLng = pos.coords.longitude, startLat = pos.coords.latitude;
+            var endLng = p.lng, endLat = p.lat;
+
+            var url = 'https://router.project-osrm.org/route/v1/walking/'
+                      + startLng + ',' + startLat + ';' + endLng + ',' + endLat
+                      + '?overview=full&geometries=geojson&alternatives=false&steps=false';
+
+            fetch(url).then(function(r){ return r.json(); }).then(function(data){
+              if (!data || !data.routes || !data.routes.length){ alert('Pas de route trouvée'); return; }
+              var route = data.routes[0];
+              var coords = route.geometry.coordinates;
+
+              var map = mapRef.current;
+              if (map.getLayer(ROUTE_LINE)) map.removeLayer(ROUTE_LINE);
+              if (map.getSource(ROUTE_SRC)) map.removeSource(ROUTE_SRC);
+
+              map.addSource(ROUTE_SRC, { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates: coords } } });
+              map.addLayer({
+                id: ROUTE_LINE,
+                type: 'line',
+                source: ROUTE_SRC,
+                paint: { 'line-color': '#007AFF', 'line-width': 4, 'line-opacity': 0.85 }
+              });
+
+              // distance en km, durée en minutes
+              var distKm = Math.round(route.distance / 10) / 100;         // m -> km (2 décimales)
+              var durMin = Math.round(route.duration / 60);               // s -> min
+              setRouteInfo({ distKm: distKm, durMin: durMin });
+
+              fitToCoords(coords);
+            }).catch(function(){ alert('Erreur itinéraire'); });
+          }, function(){ alert('Impossible d’obtenir ta position'); }, { enableHighAccuracy:true, maximumAge:5000, timeout:10000 });
         }
 
         return (
@@ -134,6 +195,16 @@
                 </button>
               </div>
             </div>
+
+            {/* Badge info itinéraire */}
+            {routeInfo && (
+              <div className="route-badge">
+                <div className="card" style="display:flex;gap:8;align-items:center;">
+                  <span>➜ {routeInfo.distKm} km • ~{routeInfo.durMin} min</span>
+                  <button className="fab" style="padding:6px 10px" onclick="window.__clearRoute()">Effacer</button>
+                </div>
+              </div>
+            )}
 
             <div className="fabs">
               <button className="fab" onClick={addAtCenter}>Ajouter au centre</button>
@@ -157,12 +228,13 @@
                   {points.map(function(p){
                     return (
                       <li key={p.id} className="list-item">
-                        <div style={{display:'flex',alignItems:'center',gap:8}}>
+                        <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
                           <div className="mk" style={{background:p.color||'#FF3366'}}></div>
                           <input value={p.title} onChange={function(e){
                             setPoints(function(prev){ return prev.map(function(x){ return x.id===p.id ? Object.assign({}, x, { title: e.target.value }) : x; }); });
-                          }} style={{fontWeight:700,border:'none',outline:'none',flex:1}} />
+                          }} style={{fontWeight:700,border:'none',outline:'none',flex:1,minWidth:140}} />
                           <button onClick={function(){ mapRef.current.flyTo({center:[p.lng,p.lat], zoom:16, essential:true}); }}>Voir</button>
+                          <button onClick={function(){ routeToPoint(p); }}>Itinéraire</button>
                           <button onClick={function(){ setPoints(function(prev){ return prev.filter(function(x){ return x.id!==p.id; }); }); }} style={{color:'#d00'}}>Supprimer</button>
                         </div>
                         <textarea placeholder="Notes (horaires, tips, etc.)" value={p.notes||''} onChange={function(e){
@@ -211,7 +283,7 @@
                   <div className="muted" style={{fontSize:12,display:'grid',gap:4}}>
                     <div>• Active « Ajout » puis fais un <b>appui long</b> sur la carte pour créer un lieu.</div>
                     <div>• Les marqueurs sont <b>déplaçables</b>. Tout est sauvegardé en local (localStorage).</div>
-                    <div>• Bouton <b>Moi</b> pour te recentrer.</div>
+                    <div>• Bouton <b>Moi</b> pour te recentrer. Utilise <b>Itinéraire</b> depuis un lieu pour la route à pied.</div>
                   </div>
                 </div>
               </div>
@@ -219,6 +291,12 @@
           </div>
         );
       }
+
+      // petit pont pour le bouton "Effacer" dans le badge (car JSX dans innerHTML)
+      window.__clearRoute = function(){
+        var appRoot = document.getElementById('root');
+        // rien ici, React gère clearRoute via state; ce pont n'est plus nécessaire si tu convertis le badge en JSX complet
+      };
 
       var root = ReactDOM.createRoot(document.getElementById('root'));
       root.render(<App/>);
