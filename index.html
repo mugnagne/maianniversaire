@@ -21,7 +21,6 @@
 
       .mk { width: 22px; height: 22px; border-radius: 999px; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
 
-      /* petite pastille d'info itinéraire */
       .route-badge { position: fixed; left: 50%; transform: translateX(-50%); bottom: 78px; z-index: 5; }
     </style>
   </head>
@@ -39,7 +38,7 @@
         return 'id-' + Math.random().toString(36).slice(2);
       }
 
-      /* Style OSM raster (routes + noms, sans clé) */
+      // Style OSM raster (routes + noms, sans clé)
       var OSM_RASTER_STYLE = {
         "version": 8,
         "sources": { "osm": { "type": "raster", "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], "tileSize": 256, "attribution": "© OpenStreetMap contributors" } },
@@ -63,7 +62,7 @@
 
         React.useEffect(function(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(points)); }, [points]);
 
-        /* Init carte + contrôles */
+        // Init carte + contrôles
         React.useEffect(function(){
           if(mapRef.current||!containerRef.current) return;
           var map = new maplibregl.Map({ container: containerRef.current, style: OSM_RASTER_STYLE, center: [-4.4861,48.3904], zoom: 12, attributionControl: true });
@@ -71,7 +70,6 @@
 
           map.addControl(new maplibregl.NavigationControl({showCompass:true}), 'bottom-right');
 
-          // Geolocate natif: montre 1 seul dot + cercle
           var geo = new maplibregl.GeolocateControl({
             positionOptions: { enableHighAccuracy: true },
             trackUserLocation: true,
@@ -108,7 +106,6 @@
         }
 
         function addAtCenter(){ var c = mapRef.current.getCenter(); addAt(c.lng, c.lat); }
-
         function centerOnMe(){
           if (geoRef.current && typeof geoRef.current.trigger === 'function') { try { geoRef.current.trigger(); return; } catch(e){} }
         }
@@ -125,7 +122,7 @@
           } catch(e){ alert('JSON invalide'); }
         }
 
-        /* ====== Itinéraire (OSRM, profil marche) ====== */
+        // ====== Itinéraire (OSRM, profil marche) ======
         function clearRoute(){
           var map = mapRef.current; if(!map) return;
           if (map.getLayer(ROUTE_LINE)) map.removeLayer(ROUTE_LINE);
@@ -154,30 +151,35 @@
                       + startLng + ',' + startLat + ';' + endLng + ',' + endLat
                       + '?overview=full&geometries=geojson&alternatives=false&steps=false';
 
-            fetch(url).then(function(r){ return r.json(); }).then(function(data){
-              if (!data || !data.routes || !data.routes.length){ alert('Pas de route trouvée'); return; }
-              var route = data.routes[0];
-              var coords = route.geometry.coordinates;
+            fetch(url)
+              .then(function(r){ if(!r.ok) throw new Error('Réponse ' + r.status); return r.json(); })
+              .then(function(data){
+                if (!data || !data.routes || !data.routes.length){ alert('Pas de route trouvée'); return; }
+                var route = data.routes[0];
+                var coords = route.geometry.coordinates;
 
-              var map = mapRef.current;
-              if (map.getLayer(ROUTE_LINE)) map.removeLayer(ROUTE_LINE);
-              if (map.getSource(ROUTE_SRC)) map.removeSource(ROUTE_SRC);
+                var map = mapRef.current;
+                if (map.getLayer(ROUTE_LINE)) map.removeLayer(ROUTE_LINE);
+                if (map.getSource(ROUTE_SRC)) map.removeSource(ROUTE_SRC);
 
-              map.addSource(ROUTE_SRC, { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates: coords } } });
-              map.addLayer({
-                id: ROUTE_LINE,
-                type: 'line',
-                source: ROUTE_SRC,
-                paint: { 'line-color': '#007AFF', 'line-width': 4, 'line-opacity': 0.85 }
+                map.addSource(ROUTE_SRC, { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates: coords } } });
+                map.addLayer({
+                  id: ROUTE_LINE,
+                  type: 'line',
+                  source: ROUTE_SRC,
+                  paint: { 'line-color': '#007AFF', 'line-width': 4, 'line-opacity': 0.85 }
+                });
+
+                var distKm = Math.round(route.distance / 10) / 100;  // m -> km (2 déc.)
+                var durMin = Math.round(route.duration / 60);        // s -> min
+                setRouteInfo({ distKm: distKm, durMin: durMin });
+
+                fitToCoords(coords);
+              })
+              .catch(function(err){
+                console.warn('OSRM error:', err);
+                alert("Impossible d'obtenir l’itinéraire (réseau/API). Réessaie plus tard.");
               });
-
-              // distance en km, durée en minutes
-              var distKm = Math.round(route.distance / 10) / 100;         // m -> km (2 décimales)
-              var durMin = Math.round(route.duration / 60);               // s -> min
-              setRouteInfo({ distKm: distKm, durMin: durMin });
-
-              fitToCoords(coords);
-            }).catch(function(){ alert('Erreur itinéraire'); });
           }, function(){ alert('Impossible d’obtenir ta position'); }, { enableHighAccuracy:true, maximumAge:5000, timeout:10000 });
         }
 
@@ -196,12 +198,12 @@
               </div>
             </div>
 
-            {/* Badge info itinéraire */}
+            {/* Badge info itinéraire (JSX correct) */}
             {routeInfo && (
               <div className="route-badge">
-                <div className="card" style="display:flex;gap:8;align-items:center;">
+                <div className="card" style={{display:'flex',gap:8,alignItems:'center'}}>
                   <span>➜ {routeInfo.distKm} km • ~{routeInfo.durMin} min</span>
-                  <button className="fab" style="padding:6px 10px" onclick="window.__clearRoute()">Effacer</button>
+                  <button className="fab" style={{padding:'6px 10px'}} onClick={clearRoute}>Effacer</button>
                 </div>
               </div>
             )}
@@ -291,12 +293,6 @@
           </div>
         );
       }
-
-      // petit pont pour le bouton "Effacer" dans le badge (car JSX dans innerHTML)
-      window.__clearRoute = function(){
-        var appRoot = document.getElementById('root');
-        // rien ici, React gère clearRoute via state; ce pont n'est plus nécessaire si tu convertis le badge en JSX complet
-      };
 
       var root = ReactDOM.createRoot(document.getElementById('root'));
       root.render(<App/>);
