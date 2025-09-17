@@ -22,6 +22,9 @@
       .muted { color: #666; }
 
       .mk { width: 22px; height: 22px; border-radius: 999px; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+
+      /* Point bleu user en HTML (au cas où le layer n'apparaît pas) */
+      .me-dot { width: 16px; height: 16px; border-radius: 999px; background: #0a84ff; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
     </style>
   </head>
   <body>
@@ -35,7 +38,6 @@
     <!-- MapLibre via CDN -->
     <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
 
-    <!-- Utiliser uniquement le preset react pour le JSX -->
     <script type="text/babel" data-presets="react">
       function rndId() {
         if (window.crypto && typeof window.crypto.randomUUID === 'function') {
@@ -44,11 +46,28 @@
         return 'id-' + Math.random().toString(36).slice(2);
       }
 
+      // Style MapLibre : tuiles OpenStreetMap raster (routes + noms)
+      var OSM_RASTER_STYLE = {
+        "version": 8,
+        "sources": {
+          "osm": {
+            "type": "raster",
+            "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+            "tileSize": 256,
+            "attribution": "© OpenStreetMap contributors"
+          }
+        },
+        "layers": [
+          { "id": "osm-tiles", "type": "raster", "source": "osm" }
+        ]
+      };
+
       const STORAGE_KEY = 'brest-guide-points-v1';
 
       function App(){
         const mapRef = React.useRef(null);
         const containerRef = React.useRef(null);
+        const userMarkerRef = React.useRef(null); // fallback HTML marker
         const [points,setPoints] = React.useState(function(){
           try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
           catch(e) { return []; }
@@ -60,12 +79,13 @@
 
         React.useEffect(function(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(points)); }, [points]);
 
+        // Init map (style OSM raster)
         React.useEffect(function(){
-          if(mapRef.current || !containerRef.current) return;
-          const map = new maplibregl.Map({
+          if(mapRef.current||!containerRef.current) return;
+          var map = new maplibregl.Map({
             container: containerRef.current,
-            style: 'https://demotiles.maplibre.org/style.json',
-            center: [-4.4861,48.3904],
+            style: OSM_RASTER_STYLE,
+            center: [-4.4861,48.3904], // Brest
             zoom: 12,
             attributionControl: true
           });
@@ -74,11 +94,11 @@
 
           map.on('load', function(){
             renderMarkers();
-            drawAccuracy();
+            drawUserLayers();
           });
 
-          // Long press pour ajouter (mobile)
-          var t = null;
+          // Long-press pour ajouter (mobile)
+          var t=null;
           map.on('touchstart', function(e){
             if(!adding) return;
             t = setTimeout(function(){ addAt(e.lngLat.lng, e.lngLat.lat); }, 450);
@@ -86,19 +106,28 @@
           map.on('touchend', function(){ if(t){ clearTimeout(t); t=null; } });
         }, [adding]);
 
-        React.useEffect(function(){ renderMarkers(); }, [points]);
+        // Forcer une demande de permission au démarrage (une fois)
+        React.useEffect(function(){
+          if(!('geolocation' in navigator)) return;
+          navigator.geolocation.getCurrentPosition(function(pos){
+            var lng = pos.coords.longitude, lat = pos.coords.latitude, acc = pos.coords.accuracy || 30;
+            setUserPos({ lng: lng, lat: lat, acc: acc });
+            drawUserLayers();
+          }, function(){ /* ignore */ }, { enableHighAccuracy:true, maximumAge:0, timeout:10000 });
+        }, []);
 
+        // Watch continu
         React.useEffect(function(){
           if(!('geolocation' in navigator)) return;
           var id = navigator.geolocation.watchPosition(function(pos){
-            var lng = pos.coords.longitude;
-            var lat = pos.coords.latitude;
-            var acc = pos.coords.accuracy || 30;
-            setUserPos({lng: lng, lat: lat, acc: acc});
-            drawAccuracy();
+            var lng = pos.coords.longitude, lat = pos.coords.latitude, acc = pos.coords.accuracy || 30;
+            setUserPos({ lng: lng, lat: lat, acc: acc });
+            drawUserLayers();
           }, function(err){ console.warn('Geolocation error:', err && err.message); }, { enableHighAccuracy:true, maximumAge:5000, timeout:15000 });
           return function(){ if(navigator.geolocation.clearWatch) navigator.geolocation.clearWatch(id); };
         }, []);
+
+        React.useEffect(function(){ renderMarkers(); }, [points]);
 
         function renderMarkers(){
           var map = mapRef.current;
@@ -122,11 +151,24 @@
           });
         }
 
-        function drawAccuracy(){
+        // Calque position utilisateur : cercle + point (et fallback marker HTML)
+        function drawUserLayers(){
           var map = mapRef.current;
-          if(!map || !userPos || (typeof map.isStyleLoaded === 'function' && !map.isStyleLoaded())) return;
+          if(!map || !userPos) return;
 
           var center = [userPos.lng, userPos.lat];
+
+          // Fallback marker HTML (toujours visible)
+          if(!userMarkerRef.current){
+            var el = document.createElement('div');
+            el.className = 'me-dot';
+            userMarkerRef.current = new maplibregl.Marker({ element: el }).setLngLat(center).addTo(map);
+          } else {
+            userMarkerRef.current.setLngLat(center);
+          }
+
+          // Layers MapLibre (si style prêt)
+          if (typeof map.isStyleLoaded === 'function' && !map.isStyleLoaded()) return;
 
           if(!map.getSource('user-point-src')){
             map.addSource('user-point-src', { type:'geojson', data:{ type:'FeatureCollection', features:[{ type:'Feature', geometry:{ type:'Point', coordinates:center } }] } });
@@ -166,6 +208,7 @@
 
         function centerOnMe(){
           if(userPos) mapRef.current.flyTo({ center:[userPos.lng,userPos.lat], zoom:16, essential:true });
+          else alert('Active la localisation pour te centrer 🙂');
         }
 
         function exportJSON(){
