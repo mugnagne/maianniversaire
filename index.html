@@ -1,301 +1,389 @@
 <!DOCTYPE html>
 <html lang="fr">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Brest Pocket Guide</title>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Brest Pocket Guide</title>
 
-    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" />
-    <style>
-      html, body, #root { height: 100%; margin: 0; }
-      #map { position: absolute; inset: 0; }
+  <!-- MapLibre GL -->
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" />
+  <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
 
-      .topbar { position: fixed; left: 12px; right: 12px; top: 10px; display: flex; gap: 8px; justify-content: space-between; z-index: 5; }
-      .card { background: #fff9; backdrop-filter: blur(6px); padding: 8px 12px; border-radius: 16px; box-shadow: 0 6px 16px rgba(0,0,0,.12); font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
-      .fabs { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; display: flex; gap: 8px; z-index: 5; flex-wrap: wrap; justify-content: center; }
-      .fab { background: #fff9; border: 1px solid #eee; padding: 10px 14px; border-radius: 16px; box-shadow: 0 6px 16px rgba(0,0,0,.15); font-weight: 600; }
+  <style>
+    :root { --pink:#FF3366; --orange:#FF5733; --bg:#fff9; }
+    *{ box-sizing: border-box }
+    html,body{ height:100%; margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Helvetica, Arial }
+    #map{ position:fixed; inset:0 }
 
-      .drawer { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top-left-radius: 24px; border-top-right-radius: 24px; box-shadow: 0 -8px 24px rgba(0,0,0,.2); max-height: 60vh; overflow: auto; padding: 16px; z-index: 6; }
-      .list-item { border: 1px solid #eee; border-radius: 16px; padding: 12px; display: grid; gap: 6px; }
-      .muted { color: #666; }
+    .topbar{ position:fixed; top:10px; left:12px; right:12px; display:flex; gap:8px; justify-content:space-between; z-index:5 }
+    .card{ background:var(--bg); backdrop-filter: blur(6px); padding:8px 12px; border-radius:16px; box-shadow:0 6px 16px rgba(0,0,0,.12); font-weight:600 }
+    .fabs{ position:fixed; left:50%; transform:translateX(-50%); bottom:16px; display:flex; gap:8px; z-index:5; flex-wrap:wrap; justify-content:center }
+    .fab{ background:var(--bg); border:1px solid #eee; padding:10px 14px; border-radius:16px; box-shadow:0 6px 16px rgba(0,0,0,.15); font-weight:600 }
 
-      .mk { width: 22px; height: 22px; border-radius: 999px; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+    .drawer{ position:fixed; left:0; right:0; bottom:0; background:#fff; border-radius:24px 24px 0 0; box-shadow:0 -8px 24px rgba(0,0,0,.2); max-height:60vh; overflow:auto; padding:16px; z-index:6 }
+    .list-item{ border:1px solid #eee; border-radius:16px; padding:12px; display:grid; gap:6px }
+    .muted{ color:#666 }
 
-      .route-badge { position: fixed; left: 50%; transform: translateX(-50%); bottom: 78px; z-index: 5; }
-    </style>
-  </head>
-  <body>
-    <div id="root"></div>
+    .mk{ width:22px; height:22px; border-radius:999px; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.25) }
 
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
-    <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
+    .route-badge{ position:fixed; left:50%; transform:translateX(-50%); bottom:78px; z-index:5 }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
 
-    <script type="text/babel" data-presets="react">
-      function rndId() {
-        if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
-        return 'id-' + Math.random().toString(36).slice(2);
-      }
+  <div class="topbar">
+    <div class="card">Brest Pocket Guide</div>
+    <div style="display:flex; gap:8px">
+      <button id="btn-list" class="card" aria-label="Ouvrir la liste">Lieux (0)</button>
+      <button id="btn-add" class="card" aria-label="Mode ajout">Ajout</button>
+    </div>
+  </div>
 
-      // Style OSM raster (routes + noms, sans clé)
-      var OSM_RASTER_STYLE = {
-        "version": 8,
-        "sources": { "osm": { "type": "raster", "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], "tileSize": 256, "attribution": "© OpenStreetMap contributors" } },
-        "layers": [{ "id": "osm-tiles", "type": "raster", "source": "osm" }]
-      };
+  <div class="route-badge" id="route-badge" style="display:none">
+    <div class="card" style="display:flex; gap:8px; align-items:center">
+      <span id="route-text">➜</span>
+      <button class="fab" id="btn-clear-route" style="padding:6px 10px">Effacer</button>
+    </div>
+  </div>
 
-      const STORAGE_KEY = 'brest-guide-points-v1';
-      const ROUTE_SRC  = 'route-src';
-      const ROUTE_LINE = 'route-line';
+  <div class="fabs">
+    <button class="fab" id="btn-add-center">Ajouter au centre</button>
+    <button class="fab" id="btn-me">Moi</button>
+    <button class="fab" id="btn-import">⋯</button>
+  </div>
 
-      function App(){
-        const mapRef = React.useRef(null);
-        const containerRef = React.useRef(null);
-        const geoRef = React.useRef(null); // GeolocateControl
+  <!-- Drawer -->
+  <div class="drawer" id="drawer" style="display:none">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+      <h3 style="margin:0">Mes lieux</h3>
+      <div style="display:flex; gap:8px">
+        <button id="btn-export">Exporter</button>
+        <button id="btn-close-drawer">Fermer</button>
+      </div>
+    </div>
+    <p id="empty-hint" class="muted" style="display:none">Aucun point pour l’instant. Active “Ajout” ou utilise “Ajouter au centre”.</p>
+    <ul id="list" style="list-style:none; padding:0; margin:0; display:grid; gap:8px"></ul>
+  </div>
 
-        const [points,setPoints] = React.useState(function(){ try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(e){ return []; } });
-        const [adding,setAdding] = React.useState(false);
-        const [showList,setShowList] = React.useState(false);
-        const [showImport,setShowImport] = React.useState(false);
-        const [routeInfo,setRouteInfo] = React.useState(null); // {distKm, durMin}
+  <!-- Modal Import -->
+  <div id="modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.3); backdrop-filter: blur(2px); z-index:7; align-items:flex-end; justify-content:center; padding:16px">
+    <div style="background:#fff; border-radius:24px; box-shadow:0 12px 32px rgba(0,0,0,.25); padding:16px; width:100%; max-width:560px">
+      <h3 style="margin:0 0 8px 0">Importer JSON / Astuces</h3>
+      <p class="muted">Colle une liste de points (même format que l’export), puis clique Importer.</p>
+      <textarea id="ta" style="width:100%; height:160px; border:1px solid #eee; border-radius:12px; padding:10px" placeholder='[
+  {"id":"p1","title":"Crêperie","lng":-4.49,"lat":48.39,"notes":"galettes top","color":"#FF3366"}
+]'></textarea>
+      <div style="display:flex; justify-content:space-between; margin-top:12px">
+        <button class="fab" id="btn-close-modal" style="padding:8px 12px">Fermer</button>
+        <div style="display:flex; gap:8px">
+          <button class="fab" id="btn-do-import" style="padding:8px 12px">Importer</button>
+          <button class="fab" id="btn-load-ex" style="padding:8px 12px">Charger des exemples</button>
+        </div>
+      </div>
+      <hr style="margin:12px 0" />
+      <div class="muted" style="font-size:12px; display:grid; gap:4px">
+        <div>• Active « Ajout » puis fais un <b>appui long</b> sur la carte pour créer un lieu.</div>
+        <div>• Les marqueurs sont <b>déplaçables</b>. Tout est sauvegardé en local (localStorage).</div>
+        <div>• Bouton <b>Moi</b> pour te recentrer. Utilise <b>Itinéraire</b> dans le popup d’un lieu.</div>
+      </div>
+    </div>
+  </div>
 
-        React.useEffect(function(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(points)); }, [points]);
+<script>
+(function(){
+  const STORAGE_KEY = 'brest-guide-points-v1';
+  const ROUTE_SRC = 'route-src';
+  const ROUTE_LINE = 'route-line';
 
-        // Init carte + contrôles
-        React.useEffect(function(){
-          if(mapRef.current||!containerRef.current) return;
-          var map = new maplibregl.Map({ container: containerRef.current, style: OSM_RASTER_STYLE, center: [-4.4861,48.3904], zoom: 12, attributionControl: true });
-          mapRef.current = map;
+  // ----- Map (style vector moderne, net) -----
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: 'https://tiles.openfreemap.org/styles/liberty',
+    center: [-4.4861, 48.3904],
+    zoom: 12,
+    attributionControl: true
+  });
+  map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'bottom-right');
 
-          map.addControl(new maplibregl.NavigationControl({showCompass:true}), 'bottom-right');
+  // Géoloc native (1 dot + cercle)
+  const geo = new maplibregl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true },
+    trackUserLocation: true,
+    showUserLocation: true,
+    showAccuracyCircle: true
+  });
+  map.addControl(geo, 'bottom-right');
 
-          var geo = new maplibregl.GeolocateControl({
-            positionOptions: { enableHighAccuracy: true },
-            trackUserLocation: true,
-            showUserLocation: true,
-            showAccuracyCircle: true
-          });
-          map.addControl(geo, 'bottom-right');
-          geoRef.current = geo;
+  // ----- State -----
+  let points = loadPoints();
+  let addingMode = false;
+  let markers = {}; // id -> Marker
 
-          map.on('load', function(){ renderMarkers(); try { geo.trigger(); } catch(e) {} });
+  function loadPoints(){
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(e){ return []; }
+  }
+  function savePoints(){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(points));
+  }
 
-          // Long-press pour ajouter
-          var t=null;
-          map.on('touchstart', function(e){ if(!adding) return; t=setTimeout(function(){ addAt(e.lngLat.lng, e.lngLat.lat); }, 450); });
-          map.on('touchend',   function(){ if(t){ clearTimeout(t); t=null; } });
-        }, [adding]);
+  // ----- UI refs -----
+  const btnAdd = document.getElementById('btn-add');
+  const btnList = document.getElementById('btn-list');
+  const btnAddCenter = document.getElementById('btn-add-center');
+  const btnMe = document.getElementById('btn-me');
 
-        React.useEffect(function(){ renderMarkers(); }, [points]);
+  const drawer = document.getElementById('drawer');
+  const listEl = document.getElementById('list');
+  const emptyHint = document.getElementById('empty-hint');
+  const btnExport = document.getElementById('btn-export');
+  const btnCloseDrawer = document.getElementById('btn-close-drawer');
 
-        function renderMarkers(){
-          var map = mapRef.current; if(!map) return;
-          document.querySelectorAll('.mk').forEach(function(el){ el.remove(); });
-          points.forEach(function(p){
-            var el = document.createElement('div'); el.className = 'mk'; el.style.background = p.color || '#FF3366';
-            var m = new maplibregl.Marker({element: el, draggable: true}).setLngLat([p.lng, p.lat]).addTo(map);
-            m.on('dragend', function(){ var c = m.getLngLat(); setPoints(function(prev){ return prev.map(function(x){ return x.id===p.id ? Object.assign({}, x, { lng:c.lng, lat:c.lat }) : x; }); }); });
-          });
-        }
+  const modal = document.getElementById('modal');
+  const ta = document.getElementById('ta');
+  const btnImport = document.getElementById('btn-import');
+  const btnCloseModal = document.getElementById('btn-close-modal');
+  const btnDoImport = document.getElementById('btn-do-import');
+  const btnLoadEx = document.getElementById('btn-load-ex');
 
-        function addAt(lng,lat){
-          var title = prompt('Titre du lieu ?','Nouveau point'); if(title===null) return;
-          var color = prompt('Couleur hex (optionnel)','\\#FF3366') || '#FF3366';
-          setPoints(function(prev){ return prev.concat([{ id:rndId(), title:(title.trim()||'Point'), notes:'', lng: lng, lat: lat, color: color }]); });
-        }
+  const routeBadge = document.getElementById('route-badge');
+  const routeText = document.getElementById('route-text');
+  const btnClearRoute = document.getElementById('btn-clear-route');
 
-        function addAtCenter(){ var c = mapRef.current.getCenter(); addAt(c.lng, c.lat); }
-        function centerOnMe(){
-          if (geoRef.current && typeof geoRef.current.trigger === 'function') { try { geoRef.current.trigger(); return; } catch(e){} }
-        }
+  // ----- Helpers -----
+  function rndId(){ return (crypto.randomUUID ? crypto.randomUUID() : 'id-'+Math.random().toString(36).slice(2)); }
 
-        function exportJSON(){
-          var blob = new Blob([JSON.stringify(points, null, 2)], { type:'application/json' });
-          var url = URL.createObjectURL(blob); var a = document.createElement('a');
-          a.href = url; a.download = 'brest-guide-points.json'; a.click(); URL.revokeObjectURL(url);
-        }
+  function renderMarkers(){
+    // clear old
+    Object.values(markers).forEach(m => m.remove());
+    markers = {};
 
-        function importJSON(text){
-          try{ var parsed = JSON.parse(text); if(!Array.isArray(parsed)) throw new Error('Format invalide');
-            setPoints(parsed.map(function(p){ return Object.assign({}, p, { id: p.id || rndId() }); }));
-          } catch(e){ alert('JSON invalide'); }
-        }
+    points.forEach(p => {
+      const el = document.createElement('div');
+      el.className = 'mk';
+      el.style.background = p.color || '#FF3366';
 
-        // ====== Itinéraire (OSRM, profil marche) ======
-        function clearRoute(){
-          var map = mapRef.current; if(!map) return;
-          if (map.getLayer(ROUTE_LINE)) map.removeLayer(ROUTE_LINE);
-          if (map.getSource(ROUTE_SRC)) map.removeSource(ROUTE_SRC);
-          setRouteInfo(null);
-        }
+      const marker = new maplibregl.Marker({ element: el, draggable: true })
+        .setLngLat([p.lng, p.lat])
+        .addTo(map);
 
-        function fitToCoords(coords){
-          var map = mapRef.current; if(!map) return;
-          var minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
-          for (var i=0;i<coords.length;i++){
-            var c = coords[i];
-            if (c[0]<minX) minX=c[0]; if (c[0]>maxX) maxX=c[0];
-            if (c[1]<minY) minY=c[1]; if (c[1]>maxY) maxY=c[1];
-          }
-          map.fitBounds([[minX,minY],[maxX,maxY]], { padding: 60, maxZoom: 16, duration: 600 });
-        }
+      // drag -> update
+      marker.on('dragend', () => {
+        const c = marker.getLngLat();
+        updatePoint(p.id, { lng: c.lng, lat: c.lat });
+      });
 
-        function routeToPoint(p){
-          if (!navigator.geolocation) { alert('Localisation indisponible'); return; }
-          navigator.geolocation.getCurrentPosition(function(pos){
-            var startLng = pos.coords.longitude, startLat = pos.coords.latitude;
-            var endLng = p.lng, endLat = p.lat;
+      // click -> popup
+      marker.getElement().addEventListener('click', () => openPopupFor(p));
 
-            var url = 'https://router.project-osrm.org/route/v1/walking/'
-                      + startLng + ',' + startLat + ';' + endLng + ',' + endLat
-                      + '?overview=full&geometries=geojson&alternatives=false&steps=false';
+      markers[p.id] = marker;
+    });
 
-            fetch(url)
-              .then(function(r){ if(!r.ok) throw new Error('Réponse ' + r.status); return r.json(); })
-              .then(function(data){
-                if (!data || !data.routes || !data.routes.length){ alert('Pas de route trouvée'); return; }
-                var route = data.routes[0];
-                var coords = route.geometry.coordinates;
+    updateList();
+    btnList.innerText = `Lieux (${points.length})`;
+  }
 
-                var map = mapRef.current;
-                if (map.getLayer(ROUTE_LINE)) map.removeLayer(ROUTE_LINE);
-                if (map.getSource(ROUTE_SRC)) map.removeSource(ROUTE_SRC);
+  function openPopupFor(p){
+    const html = `
+      <div style="min-width:220px">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px">
+          <div style="width:14px; height:14px; border-radius:999px; background:${p.color||'#FF3366'}; border:2px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.25)"></div>
+          <strong>${escapeHtml(p.title || 'Point')}</strong>
+        </div>
+        <div style="font-size:12px; color:#555; margin-bottom:8px">${escapeHtml(p.notes||'')}</div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap">
+          <button data-act="route"  class="ml-btn">Itinéraire</button>
+          <button data-act="edit"   class="ml-btn">Modifier</button>
+          <button data-act="delete" class="ml-btn" style="color:#d00">Supprimer</button>
+        </div>
+      </div>
+    `;
 
-                map.addSource(ROUTE_SRC, { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates: coords } } });
-                map.addLayer({
-                  id: ROUTE_LINE,
-                  type: 'line',
-                  source: ROUTE_SRC,
-                  paint: { 'line-color': '#007AFF', 'line-width': 4, 'line-opacity': 0.85 }
-                });
+    const popup = new maplibregl.Popup({ closeOnClick: true, maxWidth: '280px' })
+      .setLngLat([p.lng, p.lat])
+      .setHTML(html)
+      .addTo(map);
 
-                var distKm = Math.round(route.distance / 10) / 100;  // m -> km (2 déc.)
-                var durMin = Math.round(route.duration / 60);        // s -> min
-                setRouteInfo({ distKm: distKm, durMin: durMin });
+    // delegate actions
+    popup.on('open', () => {
+      const el = popup.getElement();
+      el.querySelector('[data-act="route"]').addEventListener('click', () => routeToPoint(p));
+      el.querySelector('[data-act="edit"]').addEventListener('click', () => { popup.remove(); editPoint(p.id); });
+      el.querySelector('[data-act="delete"]').addEventListener('click', () => { popup.remove(); removePoint(p.id); });
+    });
+  }
 
-                fitToCoords(coords);
-              })
-              .catch(function(err){
-                console.warn('OSRM error:', err);
-                alert("Impossible d'obtenir l’itinéraire (réseau/API). Réessaie plus tard.");
-              });
-          }, function(){ alert('Impossible d’obtenir ta position'); }, { enableHighAccuracy:true, maximumAge:5000, timeout:10000 });
-        }
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
-        return (
-          <div style={{height:'100%'}}>
-            <div id="map" ref={containerRef}></div>
+  function addPoint(lng, lat){
+    const title = prompt('Titre du lieu ?', 'Nouveau point');
+    if (title === null) return;
+    const color = prompt('Couleur hex (ex: #FF3366)', '#FF3366') || '#FF3366';
+    const p = { id: rndId(), title: title.trim() || 'Point', notes:'', lng, lat, color };
+    points.push(p); savePoints(); renderMarkers(); openPopupFor(p);
+  }
+  function updatePoint(id, patch){
+    points = points.map(x => x.id === id ? Object.assign({}, x, patch) : x);
+    savePoints(); renderMarkers();
+  }
+  function removePoint(id){
+    points = points.filter(x => x.id !== id);
+    savePoints(); renderMarkers();
+    clearRoute();
+  }
+  function editPoint(id){
+    const p = points.find(x => x.id === id); if(!p) return;
+    const t = prompt('Titre', p.title || ''); if (t === null) return;
+    const n = prompt('Notes', p.notes || ''); if (n === null) return;
+    const c = prompt('Couleur hex', p.color || '#FF3366') || p.color;
+    updatePoint(id, { title:t, notes:n, color:c });
+  }
 
-            <div className="topbar">
-              <div className="card"><b>Brest Pocket Guide</b></div>
-              <div style={{display:'flex',gap:8}}>
-                <button className="card" onClick={function(){ setShowList(function(s){ return !s; }); }} aria-label="Ouvrir la liste">Lieux ({points.length})</button>
-                <button className="card" onClick={function(){ setAdding(function(a){ return !a; }); }} aria-pressed={adding} aria-label="Mode ajout"
-                        style={{ background: adding ? 'linear-gradient(90deg,#FF3366,#FF5733)' : '#fff9', color: adding ? '#fff' : '#000' }}>
-                  {adding ? 'Ajout ON' : 'Ajout'}
-                </button>
-              </div>
-            </div>
+  function updateList(){
+    listEl.innerHTML = '';
+    emptyHint.style.display = points.length ? 'none' : 'block';
+    points.forEach(p => {
+      const li = document.createElement('li');
+      li.className = 'list-item';
+      li.innerHTML = `
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+          <div class="mk" style="background:${p.color||'#FF3366'}"></div>
+          <input value="${escapeHtml(p.title)}" style="font-weight:700; border:none; outline:none; flex:1; min-width:140px" />
+          <button data-act="fly">Voir</button>
+          <button data-act="route">Itinéraire</button>
+          <button data-act="del" style="color:#d00">Supprimer</button>
+        </div>
+        <textarea placeholder="Notes" style="border:1px solid #eee; border-radius:10px; padding:8px; min-height:60px">${escapeHtml(p.notes||'')}</textarea>
+        <div class="muted" style="display:flex; align-items:center; gap:8px; font-size:12px">
+          <label>Couleur</label>
+          <input type="color" value="${p.color||'#FF3366'}" />
+          <span>(${p.lat.toFixed(5)}, ${p.lng.toFixed(5)})</span>
+        </div>
+      `;
+      const [titleInput, notesTa, colorInput] = [
+        li.querySelector('input[type="text"], input:not([type])'),
+        li.querySelector('textarea'),
+        li.querySelector('input[type="color"]')
+      ];
+      li.querySelector('[data-act="fly"]').onclick   = () => { map.flyTo({ center:[p.lng,p.lat], zoom:16 }); };
+      li.querySelector('[data-act="route"]').onclick = () => { routeToPoint(p); };
+      li.querySelector('[data-act="del"]').onclick   = () => { removePoint(p.id); };
+      titleInput.oninput = (e)=> updatePoint(p.id, { title: e.target.value });
+      notesTa.oninput    = (e)=> updatePoint(p.id, { notes: e.target.value });
+      colorInput.oninput = (e)=> updatePoint(p.id, { color: e.target.value });
+      listEl.appendChild(li);
+    });
+  }
 
-            {/* Badge info itinéraire (JSX correct) */}
-            {routeInfo && (
-              <div className="route-badge">
-                <div className="card" style={{display:'flex',gap:8,alignItems:'center'}}>
-                  <span>➜ {routeInfo.distKm} km • ~{routeInfo.durMin} min</span>
-                  <button className="fab" style={{padding:'6px 10px'}} onClick={clearRoute}>Effacer</button>
-                </div>
-              </div>
-            )}
+  // ----- Route (OSRM) -----
+  function clearRoute(){
+    if (map.getLayer(ROUTE_LINE)) map.removeLayer(ROUTE_LINE);
+    if (map.getSource(ROUTE_SRC)) map.removeSource(ROUTE_SRC);
+    routeBadge.style.display = 'none';
+  }
+  btnClearRoute.onclick = clearRoute;
 
-            <div className="fabs">
-              <button className="fab" onClick={addAtCenter}>Ajouter au centre</button>
-              <button className="fab" onClick={centerOnMe}>Moi</button>
-              <button className="fab" onClick={function(){ setShowImport(true); }}>⋯</button>
-            </div>
+  function fitToCoords(coords){
+    let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+    coords.forEach(c => { if(c[0]<minX)minX=c[0]; if(c[0]>maxX)maxX=c[0]; if(c[1]<minY)minY=c[1]; if(c[1]>maxY)maxY=c[1]; });
+    map.fitBounds([[minX,minY],[maxX,maxY]], { padding: 60, maxZoom: 16, duration: 600 });
+  }
 
-            {showList && (
-              <div className="drawer" role="dialog" aria-label="Mes lieux">
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                  <h3 style={{margin:0}}>Mes lieux</h3>
-                  <div style={{display:'flex',gap:8}}>
-                    <button onClick={exportJSON}>Exporter</button>
-                    <button onClick={function(){ setShowList(false); }}>Fermer</button>
-                  </div>
-                </div>
+  function routeToPoint(p){
+    if (!navigator.geolocation) { alert('Localisation indisponible'); return; }
+    navigator.geolocation.getCurrentPosition(pos => {
+      const a = pos.coords; const start = [a.longitude, a.latitude];
+      const end = [p.lng, p.lat];
+      const url = 'https://router.project-osrm.org/route/v1/walking/'
+                  + start.join(',') + ';' + end.join(',')
+                  + '?overview=full&geometries=geojson&alternatives=false&steps=false';
+      fetch(url)
+        .then(r => { if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+        .then(data => {
+          if(!data || !data.routes || !data.routes.length) throw new Error('No route');
+          const route = data.routes[0];
+          const coords = route.geometry.coordinates;
 
-                {points.length===0 && <p className="muted">Aucun point pour l'instant. Active “Ajout” ou utilise “Ajouter au centre”.</p>}
+          clearRoute();
+          map.addSource(ROUTE_SRC, { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates: coords } } });
+          map.addLayer({ id:ROUTE_LINE, type:'line', source:ROUTE_SRC, paint:{ 'line-color':'#007AFF', 'line-width':4, 'line-opacity':0.9 } });
 
-                <ul style={{listStyle:'none',padding:0,margin:0,display:'grid',gap:8}}>
-                  {points.map(function(p){
-                    return (
-                      <li key={p.id} className="list-item">
-                        <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-                          <div className="mk" style={{background:p.color||'#FF3366'}}></div>
-                          <input value={p.title} onChange={function(e){
-                            setPoints(function(prev){ return prev.map(function(x){ return x.id===p.id ? Object.assign({}, x, { title: e.target.value }) : x; }); });
-                          }} style={{fontWeight:700,border:'none',outline:'none',flex:1,minWidth:140}} />
-                          <button onClick={function(){ mapRef.current.flyTo({center:[p.lng,p.lat], zoom:16, essential:true}); }}>Voir</button>
-                          <button onClick={function(){ routeToPoint(p); }}>Itinéraire</button>
-                          <button onClick={function(){ setPoints(function(prev){ return prev.filter(function(x){ return x.id!==p.id; }); }); }} style={{color:'#d00'}}>Supprimer</button>
-                        </div>
-                        <textarea placeholder="Notes (horaires, tips, etc.)" value={p.notes||''} onChange={function(e){
-                          setPoints(function(prev){ return prev.map(function(x){ return x.id===p.id ? Object.assign({}, x, { notes: e.target.value }) : x; }); });
-                        }} style={{border:'1px solid #eee',borderRadius:10,padding:8,minHeight:60}}></textarea>
-                        <div style={{display:'flex',alignItems:'center',gap:8,fontSize:12}} className="muted">
-                          <label>Couleur</label>
-                          <input type="color" value={p.color||'#FF3366'} onChange={function(e){
-                            setPoints(function(prev){ return prev.map(function(x){ return x.id===p.id ? Object.assign({}, x, { color: e.target.value }) : x; }); });
-                          }}/>
-                          <span>({p.lat.toFixed(5)}, {p.lng.toFixed(5)})</span>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            )}
+          const distKm = Math.round(route.distance/10)/100; // m->km (2 déc.)
+          const durMin = Math.round(route.duration/60);
+          routeText.textContent = `➜ ${distKm} km • ~${durMin} min`;
+          routeBadge.style.display = 'block';
+          fitToCoords(coords);
+        })
+        .catch(err => {
+          console.warn('OSRM', err);
+          alert("Impossible d'obtenir l’itinéraire (réseau/API).");
+        });
+    }, () => alert('Impossible d’obtenir ta position'), { enableHighAccuracy:true, maximumAge:5000, timeout:10000 });
+  }
 
-            {showImport && (
-              <div onClick={function(){ setShowImport(false); }} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.3)',backdropFilter:'blur(2px)',display:'flex',alignItems:'flex-end',justifyContent:'center',padding:16}}>
-                <div onClick={function(e){ e.stopPropagation(); }} style={{background:'#fff',borderRadius:24,boxShadow:'0 12px 32px rgba(0,0,0,.25)',padding:16,width:'100%',maxWidth:560}}>
-                  <h3 style={{marginTop:0}}>Importer JSON / Astuces</h3>
-                  <p className="muted" style={{marginTop:0}}>Colle une liste de points (même format que l’export), puis clique Importer.</p>
-                  <textarea id="import-ta" placeholder='[
-  {"id":"...","title":"Crêperie","lng":-4.49,"lat":48.39,"notes":"galettes top","color":"#FF3366"}
-]' style={{width:'100%',height:160,border:'1px solid #eee',borderRadius:12,padding:10}}></textarea>
-                  <div style={{display:'flex',justifyContent:'space-between',marginTop:12}}>
-                    <button className="fab" style={{padding:'8px 12px'}} onClick={function(){ setShowImport(false); }}>Fermer</button>
-                    <div style={{display:'flex',gap:8}}>
-                      <button className="fab" style={{padding:'8px 12px'}} onClick={function(){
-                        var ta=document.getElementById('import-ta'); if(!ta) return;
-                        importJSON(ta.value); setShowImport(false);
-                      }}>Importer</button>
-                      <button className="fab" style={{padding:'8px 12px'}} onClick={function(){
-                        var demo = [
-                          { id:rndId(), title:'Phare du Petit Minou', lng:-4.6189, lat:48.3378, notes:'Spot photo iconique', color:'#FF5733' },
-                          { id:rndId(), title:'Les Viviers de Keraliou', lng:-4.5305, lat:48.3696, notes:'Fruits de mer', color:'#FF3366' },
-                          { id:rndId(), title:'Musée national de la Marine', lng:-4.4952, lat:48.3834, notes:'Château de Brest', color:'#FF8A00' },
-                        ];
-                        setPoints(demo); setShowImport(false);
-                      }}>Charger des exemples</button>
-                    </div>
-                  </div>
-                  <hr style={{ margin: "12px 0" }} />
-                  <div className="muted" style={{fontSize:12,display:'grid',gap:4}}>
-                    <div>• Active « Ajout » puis fais un <b>appui long</b> sur la carte pour créer un lieu.</div>
-                    <div>• Les marqueurs sont <b>déplaçables</b>. Tout est sauvegardé en local (localStorage).</div>
-                    <div>• Bouton <b>Moi</b> pour te recentrer. Utilise <b>Itinéraire</b> depuis un lieu pour la route à pied.</div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      }
+  // ----- Events / UI -----
+  btnAdd.onclick = () => {
+    addingMode = !addingMode;
+    btnAdd.style.background = addingMode ? `linear-gradient(90deg, ${getComputedStyle(document.documentElement).getPropertyValue('--pink')}, ${getComputedStyle(document.documentElement).getPropertyValue('--orange')})` : 'var(--bg)';
+    btnAdd.style.color = addingMode ? '#fff' : '#000';
+    btnAdd.textContent = addingMode ? 'Ajout ON' : 'Ajout';
+  };
+  btnList.onclick = () => { drawer.style.display = 'block'; updateList(); };
+  btnCloseDrawer.onclick = () => { drawer.style.display = 'none'; };
 
-      var root = ReactDOM.createRoot(document.getElementById('root'));
-      root.render(<App/>);
-    </script>
-  </body>
+  btnAddCenter.onclick = () => { const c = map.getCenter(); addPoint(c.lng, c.lat); };
+  btnMe.onclick = () => { try{ geo.trigger(); }catch(e){} };
+
+  btnImport.onclick = () => { modal.style.display = 'flex'; };
+  modal.addEventListener('click', (e)=>{ if(e.target === modal) modal.style.display = 'none'; });
+  btnCloseModal.onclick = () => { modal.style.display = 'none'; };
+  btnLoadEx.onclick = () => {
+    const demo = [
+      { id:rndId(), title:'Phare du Petit Minou', lng:-4.6189, lat:48.3378, notes:'Spot photo iconique', color:'#FF5733' },
+      { id:rndId(), title:'Les Viviers de Keraliou', lng:-4.5305, lat:48.3696, notes:'Fruits de mer', color:'#FF3366' },
+      { id:rndId(), title:'Musée national de la Marine', lng:-4.4952, lat:48.3834, notes:'Château de Brest', color:'#FF8A00' },
+    ];
+    points = demo; savePoints(); renderMarkers(); modal.style.display='none';
+  };
+  btnDoImport.onclick = () => {
+    try{
+      const parsed = JSON.parse(ta.value);
+      if (!Array.isArray(parsed)) throw new Error('Format invalide');
+      // normalise + id si manquant
+      points = parsed.map(p => ({
+        id: p.id || rndId(),
+        title: (p.title||'Point'),
+        notes: (p.notes||''),
+        lng: Number(p.lng),
+        lat: Number(p.lat),
+        color: p.color || '#FF3366'
+      })).filter(p => isFinite(p.lng) && isFinite(p.lat));
+      savePoints(); renderMarkers(); modal.style.display='none';
+    }catch(e){ alert('JSON invalide'); }
+  };
+
+  btnExport.onclick = () => {
+    const blob = new Blob([JSON.stringify(points, null, 2)], { type:'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'brest-guide-points.json'; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Long-press (mobile) pour ajouter
+  let pressTimer=null;
+  map.on('touchstart', e => {
+    if(!addingMode) return;
+    pressTimer = setTimeout(() => addPoint(e.lngLat.lng, e.lngLat.lat), 450);
+  });
+  map.on('touchend', () => { if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
+
+  // Click (desktop) en mode ajout
+  map.on('click', e => { if(addingMode) addPoint(e.lngLat.lng, e.lngLat.lat); });
+
+  // Init
+  map.on('load', () => { renderMarkers(); try{ geo.trigger(); }catch(e){} });
+})();
+</script>
+</body>
 </html>
