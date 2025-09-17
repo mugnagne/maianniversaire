@@ -207,32 +207,44 @@
   }
 
   function openPopupFor(p){
-    const html = `
-      <div style="min-width:220px">
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px">
-          <div style="width:14px; height:14px; border-radius:999px; background:${p.color||'#FF3366'}; border:2px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.25)"></div>
-          <strong>${escapeHtml(p.title || 'Point')}</strong>
-        </div>
-        <div style="font-size:12px; color:#555; margin-bottom:8px">${escapeHtml(p.notes||'')}</div>
-        <div style="display:flex; gap:6px; flex-wrap:wrap">
-          <button data-act="route"  class="ml-btn">Itinéraire</button>
-          <button data-act="edit"   class="ml-btn">Modifier</button>
-          <button data-act="delete" class="ml-btn" style="color:#d00">Supprimer</button>
-        </div>
-      </div>
-    `;
-    const popup = new maplibregl.Popup({ closeOnClick: true, maxWidth: '280px' })
-      .setLngLat([p.lng, p.lat])
-      .setHTML(html)
-      .addTo(map);
+  // Contenu du popup en DOM (pas en innerHTML direct sur le popup)
+  const wrap = document.createElement('div');
+  wrap.style.minWidth = '220px';
+  wrap.innerHTML = `
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px">
+      <div style="width:14px; height:14px; border-radius:999px; background:${p.color||'#FF3366'}; border:2px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.25)"></div>
+      <strong>${(p.title || 'Point').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}</strong>
+    </div>
+    <div style="font-size:12px; color:#555; margin-bottom:8px">${(p.notes||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}</div>
+    <div style="display:flex; gap:6px; flex-wrap:wrap">
+      <button data-act="route"  class="ml-btn">Itinéraire</button>
+      <button data-act="edit"   class="ml-btn">Modifier</button>
+      <button data-act="delete" class="ml-btn" style="color:#d00">Supprimer</button>
+    </div>
+  `;
 
-    popup.on('open', () => {
-      const el = popup.getElement();
-      el.querySelector('[data-act="route"]').addEventListener('click', () => routeToPoint(p));
-      el.querySelector('[data-act="edit"]').addEventListener('click', () => { popup.remove(); editPoint(p.id); });
-      el.querySelector('[data-act="delete"]').addEventListener('click', () => { popup.remove(); removePoint(p.id); });
-    });
-  }
+  // Empêcher le clic dans le popup de remonter à la carte
+  wrap.addEventListener('mousedown', e => e.stopPropagation());
+  wrap.addEventListener('touchstart', e => e.stopPropagation(), {passive:true});
+  wrap.addEventListener('click', e => e.stopPropagation());
+
+  let popup; // défini après pour que les handlers y aient accès
+
+  // Attacher les handlers AVANT d’afficher le popup
+  const routeBtn  = wrap.querySelector('[data-act="route"]');
+  const editBtn   = wrap.querySelector('[data-act="edit"]');
+  const deleteBtn = wrap.querySelector('[data-act="delete"]');
+
+  routeBtn.addEventListener('click', (e) => { e.stopPropagation(); routeToPoint(p); });
+  editBtn.addEventListener('click',  (e) => { e.stopPropagation(); popup.remove(); editPoint(p.id); });
+  deleteBtn.addEventListener('click',(e) => { e.stopPropagation(); popup.remove(); removePoint(p.id); });
+
+  // Créer / afficher le popup avec ce contenu déjà câblé
+  popup = new maplibregl.Popup({ closeOnClick: true, maxWidth: '280px' })
+    .setLngLat([p.lng, p.lat])
+    .setDOMContent(wrap)
+    .addTo(map);
+}
 
   function addPoint(lng, lat){
     const title = prompt('Titre du lieu ?', 'Nouveau point');
