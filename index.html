@@ -1,1 +1,296 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Brest Pocket Guide</title>
 
+    <!-- MapLibre CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" />
+
+    <style>
+      html, body, #root { height: 100%; margin: 0; }
+      /* Carte plein écran */
+      #map { position: absolute; inset: 0; }
+
+      /* UI flottante (mobile-first) */
+      .topbar { position: fixed; left: 12px; right: 12px; top: 10px; display: flex; gap: 8px; justify-content: space-between; z-index: 5; }
+      .card { background: #fff9; backdrop-filter: blur(6px); padding: 8px 12px; border-radius: 16px; box-shadow: 0 6px 16px rgba(0,0,0,.12); font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+      .fabs { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; display: flex; gap: 8px; z-index: 5; }
+      .fab { background: #fff9; border: 1px solid #eee; padding: 10px 14px; border-radius: 16px; box-shadow: 0 6px 16px rgba(0,0,0,.15); font-weight: 600; }
+
+      .drawer { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top-left-radius: 24px; border-top-right-radius: 24px; box-shadow: 0 -8px 24px rgba(0,0,0,.2); max-height: 60vh; overflow: auto; padding: 16px; z-index: 6; }
+      .list-item { border: 1px solid #eee; border-radius: 16px; padding: 12px; display: grid; gap: 6px; }
+      .muted { color: #666; }
+
+      /* Marqueurs MapLibre */
+      .mk { width: 22px; height: 22px; border-radius: 999px; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+
+    <!-- React + ReactDOM via CDN -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <!-- Babel pour écrire du JSX directement (pratique pour GH Pages). En prod avec bundler, on enlève. -->
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+    <!-- MapLibre via CDN -->
+    <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
+
+    <script type="text/babel">
+      // Fallback random id si crypto.randomUUID indisponible
+      const rndId = () => (crypto?.randomUUID ? crypto.randomUUID() : 'id-' + Math.random().toString(36).slice(2));
+
+      const STORAGE_KEY = 'brest-guide-points-v1';
+
+      function App(){
+        const mapRef = React.useRef(null);
+        const containerRef = React.useRef(null);
+        const [points,setPoints] = React.useState(()=>{
+          try{ return JSON.parse(localStorage.getItem(STORAGE_KEY))||[] }catch{ return [] }
+        });
+        const [adding,setAdding] = React.useState(false);
+        const [showList,setShowList] = React.useState(false);
+        const [showImport,setShowImport] = React.useState(false);
+        const [userPos,setUserPos] = React.useState(null); // {lng,lat,acc}
+
+        // Persist
+        React.useEffect(()=>{ localStorage.setItem(STORAGE_KEY, JSON.stringify(points)); },[points]);
+
+        // Init map
+        React.useEffect(()=>{
+          if(mapRef.current||!containerRef.current) return;
+          const map = new maplibregl.Map({
+            container: containerRef.current,
+            style: 'https://demotiles.maplibre.org/style.json',
+            center: [-4.4861,48.3904], // Brest
+            zoom: 12,
+            attributionControl: true
+          });
+          map.addControl(new maplibregl.NavigationControl({showCompass:false}), 'bottom-right');
+          mapRef.current = map;
+
+          map.on('load', ()=>{
+            renderMarkers();
+            drawAccuracy();
+          });
+
+          // Long-press pour ajouter (mobile)
+          let t=null;
+          map.on('touchstart',(e)=>{
+            if(!adding) return;
+            t=setTimeout(()=> addAt(e.lngLat.lng, e.lngLat.lat), 450);
+          });
+          map.on('touchend',()=>{ if(t){ clearTimeout(t); t=null; } });
+        },[adding]);
+
+        // Redessiner les marqueurs quand points change
+        React.useEffect(()=>{ renderMarkers(); },[points]);
+
+        // Géoloc en continu
+        React.useEffect(()=>{
+          if(!('geolocation' in navigator)) return;
+          const id = navigator.geolocation.watchPosition(pos=>{
+            const {longitude:lng, latitude:lat, accuracy:acc} = pos.coords;
+            setUserPos({lng,lat,acc: acc || 30});
+            drawAccuracy();
+          }, err=>{ console.warn('Geolocation error:', err?.message); }, { enableHighAccuracy:true, maximumAge:5000, timeout:15000 });
+          return ()=> navigator.geolocation.clearWatch && navigator.geolocation.clearWatch(id);
+        },[]);
+
+        function renderMarkers(){
+          const map = mapRef.current;
+          if(!map) return;
+          // Nettoyer anciens marqueurs
+          document.querySelectorAll('.mk').forEach(el=>el.remove());
+          // Créer nouveaux
+          points.forEach(p=>{
+            const el = document.createElement('div');
+            el.className = 'mk';
+            el.style.background = p.color || '#FF3366';
+            const m = new maplibregl.Marker({element: el, draggable: true})
+              .setLngLat([p.lng, p.lat])
+              .addTo(map);
+            m.on('dragend', ()=>{
+              const c = m.getLngLat();
+              setPoints(prev=>prev.map(x=>x.id===p.id?{...x, lng:c.lng, lat:c.lat}:x));
+            });
+          });
+        }
+
+        // Cercle de précision + point utilisateur
+        function drawAccuracy(){
+          const map = mapRef.current;
+          if(!map || !map.isStyleLoaded() || !userPos) return;
+          const center = [userPos.lng, userPos.lat];
+
+          // point
+          if(!map.getSource('user-point-src')){
+            map.addSource('user-point-src', { type:'geojson', data:{ type:'FeatureCollection', features:[{ type:'Feature', geometry:{ type:'Point', coordinates:center } }] } });
+            map.addLayer({ id:'user-point', type:'circle', source:'user-point-src', paint:{ 'circle-radius':6, 'circle-color':'#007AFF', 'circle-stroke-width':2, 'circle-stroke-color':'#fff' }});
+          } else {
+            map.getSource('user-point-src').setData({ type:'FeatureCollection', features:[{ type:'Feature', geometry:{ type:'Point', coordinates:center } }] });
+          }
+
+          // cercle (approx pixel radius)
+          const meters = Math.max(5, Math.min(userPos.acc, 200));
+          const metersToPixelsAtLat = (m, lat)=> m / (0.075 * Math.cos((lat * Math.PI)/180)); // approx
+          const radiusPx = metersToPixelsAtLat(meters, userPos.lat);
+
+          if(!map.getSource('user-acc-src')){
+            map.addSource('user-acc-src', { type:'geojson', data:{ type:'FeatureCollection', features:[{ type:'Feature', geometry:{ type:'Point', coordinates:center } }] } });
+            map.addLayer({ id:'user-accuracy', type:'circle', source:'user-acc-src',
+              paint:{ 'circle-radius': radiusPx, 'circle-color':'#007AFF22', 'circle-stroke-width':1, 'circle-stroke-color':'#007AFF66' }
+            }, 'user-point');
+          } else {
+            map.getSource('user-acc-src').setData({ type:'FeatureCollection', features:[{ type:'Feature', geometry:{ type:'Point', coordinates:center } }] });
+            map.setPaintProperty('user-accuracy', 'circle-radius', radiusPx);
+          }
+        }
+
+        function addAt(lng,lat){
+          const title = prompt('Titre du lieu ?','Nouveau point');
+          if(title===null) return;
+          const color = prompt('Couleur hex (optionnel)','\\#FF3366') || '#FF3366';
+          setPoints(prev=>[...prev, { id:rndId(), title:(title.trim()||'Point'), notes:'', lng, lat, color }]);
+        }
+
+        function addAtCenter(){
+          const c = mapRef.current.getCenter();
+          addAt(c.lng, c.lat);
+        }
+
+        function centerOnMe(){
+          if(userPos) mapRef.current.flyTo({ center:[userPos.lng,userPos.lat], zoom:16, essential:true });
+        }
+
+        function exportJSON(){
+          const blob = new Blob([JSON.stringify(points, null, 2)], { type:'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = 'brest-guide-points.json'; a.click();
+          URL.revokeObjectURL(url);
+        }
+
+        function importJSON(text){
+          try{
+            const parsed = JSON.parse(text);
+            if(!Array.isArray(parsed)) throw new Error('Format invalide');
+            setPoints(parsed.map(p=> ({ ...p, id: p.id || rndId() })));
+          } catch(e){ alert('JSON invalide'); }
+        }
+
+        return (
+          <div style={{height:'100%'}}>
+            <div id="map" ref={containerRef}></div>
+
+            {/* Barre haute */}
+            <div className="topbar">
+              <div className="card"><b>Brest Pocket Guide</b></div>
+              <div style={{display:'flex',gap:8}}>
+                <button className="card" onClick={()=>setShowList(s=>!s)} aria-label="Ouvrir la liste">Lieux ({points.length})</button>
+                <button className="card" onClick={()=>setAdding(a=>!a)} aria-pressed={adding} aria-label="Mode ajout"
+                        style={{ background: adding ? 'linear-gradient(90deg,#FF3366,#FF5733)' : '#fff9', color: adding ? '#fff' : '#000' }}>
+                  {adding ? 'Ajout ON' : 'Ajout'}
+                </button>
+              </div>
+            </div>
+
+            {/* Boutons bas */}
+            <div className="fabs">
+              <button className="fab" onClick={addAtCenter}>Ajouter au centre</button>
+              <button className="fab" onClick={centerOnMe}>Moi</button>
+              <button className="fab" onClick={()=>setShowImport(true)}>⋯</button>
+            </div>
+
+            {/* Tiroir liste */}
+            {showList && (
+              <div className="drawer" role="dialog" aria-label="Mes lieux">
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                  <h3 style={{margin:0}}>Mes lieux</h3>
+                  <div style={{display:'flex',gap:8}}>
+                    <button onClick={exportJSON}>Exporter</button>
+                    <button onClick={()=>setShowList(false)}>Fermer</button>
+                  </div>
+                </div>
+
+                {points.length===0 && <p className="muted">Aucun point pour l'instant. Active “Ajout” ou utilise “Ajouter au centre”.</p>}
+
+                <ul style={{listStyle:'none',padding:0,margin:0,display:'grid',gap:8}}>
+                  {points.map(p=>(
+                    <li key={p.id} className="list-item">
+                      <div style={{display:'flex',alignItems:'center',gap:8}}>
+                        <div className="mk" style={{background:p.color||'#FF3366'}}></div>
+                        <input
+                          value={p.title}
+                          onChange={e=>setPoints(prev=>prev.map(x=>x.id===p.id?{...x,title:e.target.value}:x))}
+                          style={{fontWeight:700,border:'none',outline:'none',flex:1}}
+                        />
+                        <button onClick={()=>{ mapRef.current.flyTo({center:[p.lng,p.lat], zoom:16, essential:true}); }}>Voir</button>
+                        <button onClick={()=>setPoints(prev=>prev.filter(x=>x.id!==p.id))} style={{color:'#d00'}}>Supprimer</button>
+                      </div>
+                      <textarea
+                        placeholder="Notes (horaires, tips, etc.)"
+                        value={p.notes||''}
+                        onChange={e=>setPoints(prev=>prev.map(x=>x.id===p.id?{...x,notes:e.target.value}:x))}
+                        style={{border:'1px solid #eee',borderRadius:10,padding:8,minHeight:60}}
+                      ></textarea>
+                      <div style={{display:'flex',alignItems:'center',gap:8,fontSize:12}} className="muted">
+                        <label>Couleur</label>
+                        <input type="color" value={p.color||'#FF3366'} onChange={e=>setPoints(prev=>prev.map(x=>x.id===p.id?{...x,color:e.target.value}:x))}/>
+                        <span>({p.lat.toFixed(5)}, {p.lng.toFixed(5)})</span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Modal import / astuces */}
+            {showImport && (
+              <div onClick={()=>setShowImport(false)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,.3)',backdropFilter:'blur(2px)',display:'flex',alignItems:'flex-end',justifyContent:'center',padding:16}}>
+                <div onClick={(e)=>e.stopPropagation()} style={{background:'#fff',borderRadius:24,boxShadow:'0 12px 32px rgba(0,0,0,.25)',padding:16,width:'100%',maxWidth:560}}>
+                  <h3 style={{marginTop:0}}>Importer JSON / Astuces</h3>
+                  <p className="muted" style={{marginTop:0}}>Colle une liste de points (même format que l’export), puis clique Importer.</p>
+                  <textarea id="import-ta" placeholder='[
+  {"id":"...","title":"Crêperie","lng":-4.49,"lat":48.39,"notes":"galettes top","color":"#FF3366"}
+]' style={{width:'100%',height:160,border:'1px solid #eee',borderRadius:12,padding:10}}></textarea>
+                  <div style={{display:'flex',justifyContent:'space-between',marginTop:12}}>
+                    <button className="fab" style={{padding:'8px 12px'}} onClick={()=>setShowImport(false)}>Fermer</button>
+                    <div style={{display:'flex',gap:8}}>
+                      <button className="fab" style={{padding:'8px 12px'}} onClick={()=>{
+                        const ta=document.getElementById('import-ta');
+                        if(!ta) return;
+                        importJSON(ta.value);
+                        setShowImport(false);
+                      }}>Importer</button>
+                      <button className="fab" style={{padding:'8px 12px'}} onClick={()=>{
+                        const demo = [
+                          { id:rndId(), title:'Phare du Petit Minou', lng:-4.6189, lat:48.3378, notes:'Spot photo iconique', color:'#FF5733' },
+                          { id:rndId(), title:'Les Viviers de Keraliou', lng:-4.5305, lat:48.3696, notes:'Fruits de mer', color:'#FF3366' },
+                          { id:rndId(), title:'Musée national de la Marine', lng:-4.4952, lat:48.3834, notes:'Château de Brest', color:'#FF8A00' },
+                        ];
+                        setPoints(demo);
+                        setShowImport(false);
+                      }}>Charger des exemples</button>
+                    </div>
+                  </div>
+                  <hr style="margin:12px 0" />
+                  <div className="muted" style={{fontSize:12,display:'grid',gap:4}}>
+                    <div>• Active « Ajout » puis fais un <b>appui long</b> sur la carte pour créer un lieu.</div>
+                    <div>• Les marqueurs sont <b>déplaçables</b>. Tout est sauvegardé en local (localStorage).</div>
+                    <div>• Bouton <b>Moi</b> pour te recentrer.</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<App/>);
+    </script>
+  </body>
+</html>
