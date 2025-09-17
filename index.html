@@ -69,6 +69,21 @@
     .maplibregl-popup-content button{ color:#111; background:#f3f4f6; border:1px solid #d9dbe1; border-radius:10px; padding:6px 10px; }
     .maplibregl-popup-content strong{ color:#111 }
     .maplibregl-popup-content .muted{ color:#333 }
+
+    /* Forcer Amarante sur toute l'UI (y compris contrôles MapLibre) */
+    html, body, #map,
+    button, input, select, textarea,
+    .card, .fab, .drawer, .list-item, .lbl,
+    .maplibregl-ctrl, .maplibregl-ctrl button, .maplibregl-ctrl-group button,
+    .maplibregl-popup, .maplibregl-popup-content, .maplibregl-popup * {
+      font-family: "Amarante", system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Helvetica, Arial !important;
+      font-weight: 400;
+    }
+    
+    /* Optionnel: harmoniser la taille et l’anti-aliasing */
+    button, input, select, textarea { font-size: 14px; }
+    .maplibregl-ctrl button { font-size: 14px !important; }
+    body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
   </style>
 </head>
 <body>
