@@ -85,4 +85,310 @@
       <div class="muted" style="font-size:12px; display:grid; gap:4px">
         <div>• Active « Ajout » puis fais un <b>appui long</b> sur la carte pour créer un lieu.</div>
         <div>• Les marqueurs sont <b>déplaçables</b>. Tout est sauvegardé en local (localStorage).</div>
-        <div>• Bouton <b
+        <div>• Bouton <b>Moi</b> pour te recentrer. Utilise <b>Itinéraire</b> dans le popup d’un lieu.</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const STORAGE_KEY = 'brest-guide-points-v1';
+  const ROUTE_SRC = 'route-src';
+  const ROUTE_LINE = 'route-line';
+
+  // ----- Map (vector style net) -----
+  const map = new maplibregl.Map({
+    container: 'map',
+    style: 'https://tiles.openfreemap.org/styles/liberty', // vector, no key
+    center: [-4.4861, 48.3904],
+    zoom: 12,
+    attributionControl: true
+  });
+  map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'bottom-right');
+
+  // Geolocate (1 dot + cercle)
+  const geo = new maplibregl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true },
+    trackUserLocation: true,
+    showUserLocation: true,
+    showAccuracyCircle: true
+  });
+  map.addControl(geo, 'bottom-right');
+
+  // dernière position connue via le contrôle (évite 2e prompt)
+  let currentPos = null; // {lng, lat, acc}
+  geo.on('geolocate', (e) => {
+    currentPos = { lng: e.coords.longitude, lat: e.coords.latitude, acc: e.coords.accuracy || 30 };
+  });
+
+  // ----- State -----
+  let points = loadPoints();
+  let addingMode = false;
+  let markers = {}; // id -> Marker
+
+  function loadPoints(){
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(e){ return []; }
+  }
+  function savePoints(){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(points));
+  }
+
+  // ----- UI refs (déclarés une seule fois) -----
+  const btnAdd        = document.getElementById('btn-add');
+  const btnList       = document.getElementById('btn-list');
+  const btnAddCenter  = document.getElementById('btn-add-center');
+  const btnMeEl       = document.getElementById('btn-me');
+  const drawer        = document.getElementById('drawer');
+  const listEl        = document.getElementById('list');
+  const emptyHint     = document.getElementById('empty-hint');
+  const btnExport     = document.getElementById('btn-export');
+  const btnCloseDrawer= document.getElementById('btn-close-drawer');
+  const modal         = document.getElementById('modal');
+  const ta            = document.getElementById('ta');
+  const btnImport     = document.getElementById('btn-import');
+  const btnCloseModal = document.getElementById('btn-close-modal');
+  const btnDoImport   = document.getElementById('btn-do-import');
+  const btnLoadEx     = document.getElementById('btn-load-ex');
+  const routeBadge    = document.getElementById('route-badge');
+  const routeText     = document.getElementById('route-text');
+  const btnClearRoute = document.getElementById('btn-clear-route');
+
+  // ----- Helpers -----
+  function rndId(){ return (crypto.randomUUID ? crypto.randomUUID() : 'id-'+Math.random().toString(36).slice(2)); }
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+  function renderMarkers(){
+    Object.values(markers).forEach(m => m.remove());
+    markers = {};
+
+    points.forEach(p => {
+      const el = document.createElement('div');
+      el.className = 'mk';
+      el.style.background = p.color || '#FF3366';
+
+      const marker = new maplibregl.Marker({ element: el, draggable: true })
+        .setLngLat([p.lng, p.lat])
+        .addTo(map);
+
+      marker.on('dragend', () => {
+        const c = marker.getLngLat();
+        updatePoint(p.id, { lng: c.lng, lat: c.lat });
+      });
+
+      marker.getElement().addEventListener('click', () => openPopupFor(p));
+      markers[p.id] = marker;
+    });
+
+    updateList();
+    btnList.innerText = `Lieux (${points.length})`;
+  }
+
+  function openPopupFor(p){
+    const html = `
+      <div style="min-width:220px">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px">
+          <div style="width:14px; height:14px; border-radius:999px; background:${p.color||'#FF3366'}; border:2px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.25)"></div>
+          <strong>${escapeHtml(p.title || 'Point')}</strong>
+        </div>
+        <div style="font-size:12px; color:#555; margin-bottom:8px">${escapeHtml(p.notes||'')}</div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap">
+          <button data-act="route"  class="ml-btn">Itinéraire</button>
+          <button data-act="edit"   class="ml-btn">Modifier</button>
+          <button data-act="delete" class="ml-btn" style="color:#d00">Supprimer</button>
+        </div>
+      </div>
+    `;
+
+    const popup = new maplibregl.Popup({ closeOnClick: true, maxWidth: '280px' })
+      .setLngLat([p.lng, p.lat])
+      .setHTML(html)
+      .addTo(map);
+
+    popup.on('open', () => {
+      const el = popup.getElement();
+      el.querySelector('[data-act="route"]').addEventListener('click', () => routeToPoint(p));
+      el.querySelector('[data-act="edit"]').addEventListener('click', () => { popup.remove(); editPoint(p.id); });
+      el.querySelector('[data-act="delete"]').addEventListener('click', () => { popup.remove(); removePoint(p.id); });
+    });
+  }
+
+  function addPoint(lng, lat){
+    const title = prompt('Titre du lieu ?', 'Nouveau point');
+    if (title === null) return;
+    const color = prompt('Couleur hex (ex: #FF3366)', '#FF3366') || '#FF3366';
+    const p = { id: rndId(), title: title.trim() || 'Point', notes:'', lng, lat, color };
+    points.push(p); savePoints(); renderMarkers(); openPopupFor(p);
+  }
+  function updatePoint(id, patch){
+    points = points.map(x => x.id === id ? Object.assign({}, x, patch) : x);
+    savePoints(); renderMarkers();
+  }
+  function removePoint(id){
+    points = points.filter(x => x.id !== id);
+    savePoints(); renderMarkers();
+    clearRoute();
+  }
+  function editPoint(id){
+    const p = points.find(x => x.id === id); if(!p) return;
+    const t = prompt('Titre', p.title || ''); if (t === null) return;
+    const n = prompt('Notes', p.notes || ''); if (n === null) return;
+    const c = prompt('Couleur hex', p.color || '#FF3366') || p.color;
+    updatePoint(id, { title:t, notes:n, color:c });
+  }
+
+  function updateList(){
+    listEl.innerHTML = '';
+    emptyHint.style.display = points.length ? 'none' : 'block';
+    points.forEach(p => {
+      const li = document.createElement('li');
+      li.className = 'list-item';
+      li.innerHTML = `
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap">
+          <div class="mk" style="background:${p.color||'#FF3366'}"></div>
+          <input value="${escapeHtml(p.title)}" style="font-weight:700; border:none; outline:none; flex:1; min-width:140px" />
+          <button data-act="fly">Voir</button>
+          <button data-act="route">Itinéraire</button>
+          <button data-act="del" style="color:#d00">Supprimer</button>
+        </div>
+        <textarea placeholder="Notes" style="border:1px solid #eee; border-radius:10px; padding:8px; min-height:60px">${escapeHtml(p.notes||'')}</textarea>
+        <div class="muted" style="display:flex; align-items:center; gap:8px; font-size:12px">
+          <label>Couleur</label>
+          <input type="color" value="${p.color||'#FF3366'}" />
+          <span>(${p.lat.toFixed(5)}, ${p.lng.toFixed(5)})</span>
+        </div>
+      `;
+      const titleInput = li.querySelector('input');
+      const notesTa    = li.querySelector('textarea');
+      const colorInput = li.querySelector('input[type="color"]');
+      li.querySelector('[data-act="fly"]').onclick   = () => { map.flyTo({ center:[p.lng,p.lat], zoom:16 }); };
+      li.querySelector('[data-act="route"]').onclick = () => { routeToPoint(p); };
+      li.querySelector('[data-act="del"]').onclick   = () => { removePoint(p.id); };
+      titleInput.oninput = (e)=> updatePoint(p.id, { title: e.target.value });
+      notesTa.oninput    = (e)=> updatePoint(p.id, { notes: e.target.value });
+      colorInput.oninput = (e)=> updatePoint(p.id, { color: e.target.value });
+      listEl.appendChild(li);
+    });
+  }
+
+  // ----- Route (OSRM) -----
+  function clearRoute(){
+    if (map.getLayer(ROUTE_LINE)) map.removeLayer(ROUTE_LINE);
+    if (map.getSource(ROUTE_SRC)) map.removeSource(ROUTE_SRC);
+    routeBadge.style.display = 'none';
+  }
+  btnClearRoute.onclick = clearRoute;
+
+  function fitToCoords(coords){
+    let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+    coords.forEach(c => { if(c[0]<minX)minX=c[0]; if(c[0]>maxX)maxX=c[0]; if(c[1]<minY)minY=c[1]; if(c[1]>maxY)maxY=c[1]; });
+    map.fitBounds([[minX,minY],[maxX,maxY]], { padding: 60, maxZoom: 16, duration: 600 });
+  }
+
+  function routeToPoint(p){
+    // utilise la dernière position connue (via GeolocateControl)
+    if (currentPos) return fetchRoute([currentPos.lng, currentPos.lat], [p.lng, p.lat]);
+
+    // sinon, on demande une fois via le contrôle
+    try { geo.trigger(); } catch(e){}
+    setTimeout(() => {
+      if (currentPos) fetchRoute([currentPos.lng, currentPos.lat], [p.lng, p.lat]);
+      else alert('Active la localisation (icône cible à droite) puis réessaie.');
+    }, 1200);
+  }
+
+  function fetchRoute(start, end){
+    const url = 'https://router.project-osrm.org/route/v1/walking/'
+                + start.join(',') + ';' + end.join(',')
+                + '?overview=full&geometries=geojson&alternatives=false&steps=false';
+    fetch(url)
+      .then(r => { if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+      .then(data => {
+        if(!data || !data.routes || !data.routes.length) throw new Error('No route');
+        const route = data.routes[0];
+        const coords = route.geometry.coordinates;
+
+        clearRoute();
+        map.addSource(ROUTE_SRC, { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates: coords } } });
+        map.addLayer({ id:ROUTE_LINE, type:'line', source:ROUTE_SRC, paint:{ 'line-color':'#007AFF', 'line-width':4, 'line-opacity':0.9 } });
+
+        const distKm = Math.round(route.distance/10)/100; // m->km
+        const durMin = Math.round(route.duration/60);
+        routeText.textContent = `➜ ${distKm} km • ~${durMin} min`;
+        routeBadge.style.display = 'block';
+        fitToCoords(coords);
+      })
+      .catch(err => {
+        console.warn('OSRM', err);
+        alert("Impossible d'obtenir l’itinéraire (réseau/API).");
+      });
+  }
+
+  // ----- Events / UI -----
+  btnMeEl.onclick = () => { try{ geo.trigger(); }catch(e){} };
+
+  btnAdd.onclick = () => {
+    addingMode = !addingMode;
+    btnAdd.style.background = addingMode ? `linear-gradient(90deg, var(--pink), var(--orange))` : 'var(--bg)';
+    btnAdd.style.color = addingMode ? '#fff' : '#000';
+    btnAdd.textContent = addingMode ? 'Ajout ON' : 'Ajout';
+  };
+
+  btnList.onclick = () => { drawer.style.display = 'block'; updateList(); };
+  btnCloseDrawer.onclick = () => { drawer.style.display = 'none'; };
+
+  btnAddCenter.onclick = () => { const c = map.getCenter(); addPoint(c.lng, c.lat); };
+
+  btnImport.onclick = () => { modal.style.display = 'flex'; };
+  modal.addEventListener('click', (e)=>{ if(e.target === modal) modal.style.display = 'none'; });
+  btnCloseModal.onclick = () => { modal.style.display = 'none'; };
+
+  btnLoadEx.onclick = () => {
+    const demo = [
+      { id:rndId(), title:'Phare du Petit Minou', lng:-4.6189, lat:48.3378, notes:'Spot photo iconique', color:'#FF5733' },
+      { id:rndId(), title:'Les Viviers de Keraliou', lng:-4.5305, lat:48.3696, notes:'Fruits de mer', color:'#FF3366' },
+      { id:rndId(), title:'Musée national de la Marine', lng:-4.4952, lat:48.3834, notes:'Château de Brest', color:'#FF8A00' },
+    ];
+    points = demo; savePoints(); renderMarkers(); modal.style.display='none';
+  };
+
+  btnDoImport.onclick = () => {
+    try{
+      const parsed = JSON.parse(ta.value);
+      if (!Array.isArray(parsed)) throw new Error('Format invalide');
+      points = parsed.map(p => ({
+        id: p.id || rndId(),
+        title: (p.title||'Point'),
+        notes: (p.notes||''),
+        lng: Number(p.lng),
+        lat: Number(p.lat),
+        color: p.color || '#FF3366'
+      })).filter(p => isFinite(p.lng) && isFinite(p.lat));
+      savePoints(); renderMarkers(); modal.style.display='none';
+    }catch(e){ alert('JSON invalide'); }
+  };
+
+  btnExport.onclick = () => {
+    const blob = new Blob([JSON.stringify(points, null, 2)], { type:'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'brest-guide-points.json'; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Long-press (mobile) pour ajouter
+  let pressTimer=null;
+  map.on('touchstart', e => {
+    if(!addingMode) return;
+    pressTimer = setTimeout(() => addPoint(e.lngLat.lng, e.lngLat.lat), 450);
+  });
+  map.on('touchend', () => { if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
+
+  // Click (desktop) en mode ajout
+  map.on('click', e => { if(addingMode) addPoint(e.lngLat.lng, e.lngLat.lat); });
+
+  // Init
+  map.on('load', () => { renderMarkers(); try{ geo.trigger(); }catch(e){} });
+})();
+</script>
+</body>
+</html>
