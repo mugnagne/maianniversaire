@@ -57,7 +57,8 @@
         const containerRef = React.useRef(null);
 
         const userWrapRef   = React.useRef(null);   // element qui tourne (flèche + dot)
-        const userMarkerRef = React.useRef(null);   // maplibre marker qui porte userWrapRef
+        const userMarkerRef = React.useRef(null);   // maplibre marker
+        const [hasAccLayer, setHasAccLayer] = React.useState(false);
 
         const [points,setPoints] = React.useState(function(){ try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(e){ return []; } });
         const [adding,setAdding] = React.useState(false);
@@ -75,11 +76,13 @@
           mapRef.current = map;
 
           map.addControl(new maplibregl.NavigationControl({showCompass:false}), 'bottom-right');
+
+          // GeolocateControl utilisé seulement pour l'autorisation + recenter (on désactive l'affichage natif)
           var geo = new maplibregl.GeolocateControl({
             positionOptions: { enableHighAccuracy: true },
             trackUserLocation: true,
-            showUserLocation: true,
-            showAccuracyCircle: true
+            showUserLocation: false,      // <-- pas de dot natif
+            showAccuracyCircle: false     // <-- pas de cercle natif
           });
           map.addControl(geo, 'bottom-right');
 
@@ -94,26 +97,24 @@
           map.on('touchend',   function(){ if(t){ clearTimeout(t); t=null; } });
         }, [adding]);
 
-        /* GPS: suivi + maj du fallback (position) et de la rotation si heading GPS dispo */
+        /* GPS: suivi + mise à jour du marqueur ORIENTÉ + cercle précision (custom) */
         React.useEffect(function(){
           if(!('geolocation' in navigator)) return;
           var id = navigator.geolocation.watchPosition(function(pos){
             var lng = pos.coords.longitude, lat = pos.coords.latitude, acc = pos.coords.accuracy || 30;
             setUserPos({ lng: lng, lat: lat, acc: acc });
-            if (typeof pos.coords.heading === 'number' && !isNaN(pos.coords.heading)) {
-              setHeading(pos.coords.heading); // 0 = Nord
-            }
-            updateUserMarker(lng, lat);      // place/màj le marqueur
+            if (typeof pos.coords.heading === 'number' && !isNaN(pos.coords.heading)) setHeading(pos.coords.heading);
+            updateUserMarker(lng, lat);
+            updateAccuracyCircle(lng, lat, acc);
           }, function(err){ console.warn('Geolocation error:', err && err.message); }, { enableHighAccuracy:true, maximumAge:5000, timeout:15000 });
           return function(){ if(navigator.geolocation.clearWatch) navigator.geolocation.clearWatch(id); };
         }, []);
 
         React.useEffect(function(){ renderMarkers(); }, [points]);
 
-        /* Boussole: DeviceOrientation (meilleure à l'arrêt). Bouton "🧭 Boussole" pour iOS. */
+        /* Boussole: DeviceOrientation (meilleure à l'arrêt). */
         function enableCompass(){
           if (window.DeviceOrientationEvent && typeof window.DeviceOrientationEvent.requestPermission === 'function') {
-            // iOS nécessite une interaction utilisateur + permission
             window.DeviceOrientationEvent.requestPermission().then(function(resp){
               if (resp === 'granted') listenOrientation();
               else alert('Permission boussole refusée');
@@ -124,22 +125,12 @@
             alert('Boussole non disponible sur ce navigateur');
           }
         }
-
         function listenOrientation(){
           window.addEventListener('deviceorientation', function(e){
-            // iOS expose webkitCompassHeading (0..360) / Android: alpha (0..360), 0 = Est -> on convertit en cap compas
             var h = null;
-            if (typeof e.webkitCompassHeading === 'number') {
-              h = e.webkitCompassHeading; // déjà "vers le Nord"
-            } else if (typeof e.alpha === 'number') {
-              // convertir alpha (0=Est, 90=Nord) en cap "Nord=0"
-              h = (360 - e.alpha + 90) % 360;
-              if (h < 0) h += 360;
-            }
-            if (h !== null) {
-              setHeading(h);
-              rotateUserMarker(h);
-            }
+            if (typeof e.webkitCompassHeading === 'number') h = e.webkitCompassHeading;
+            else if (typeof e.alpha === 'number') { h = (360 - e.alpha + 90) % 360; if (h < 0) h += 360; }
+            if (h !== null) { setHeading(h); rotateUserMarker(h); }
           }, true);
         }
 
@@ -147,9 +138,7 @@
           if (userWrapRef.current) userWrapRef.current.style.transform = 'rotate(' + deg + 'deg)';
         }
 
-        function updateUserMarker(lng, lat){
-          var map = mapRef.current; if(!map) return;
-
+        function ensureUserWrap(){
           if (!userWrapRef.current) {
             var wrap = document.createElement('div'); wrap.className = 'me-wrap';
             var arrow = document.createElement('div'); arrow.className = 'me-arrow';
@@ -157,12 +146,37 @@
             wrap.appendChild(arrow); wrap.appendChild(dot);
             userWrapRef.current = wrap;
           }
+        }
+
+        function updateUserMarker(lng, lat){
+          var map = mapRef.current; if(!map) return;
+          ensureUserWrap();
           if (!userMarkerRef.current) {
             userMarkerRef.current = new maplibregl.Marker({ element: userWrapRef.current }).setLngLat([lng, lat]).addTo(mapRef.current);
           } else {
             userMarkerRef.current.setLngLat([lng, lat]);
           }
           if (heading !== null) rotateUserMarker(heading);
+        }
+
+        // Cercle de précision (custom layer) — une seule instance
+        function updateAccuracyCircle(lng, lat, acc){
+          var map = mapRef.current; if(!map) return;
+          var center = [lng, lat];
+          if (!hasAccLayer) {
+            map.addSource('user-acc-src', { type:'geojson', data:{ type:'FeatureCollection', features:[{ type:'Feature', geometry:{ type:'Point', coordinates:center } }] } });
+            map.addLayer({ id:'user-accuracy', type:'circle', source:'user-acc-src',
+              paint:{ 'circle-radius': 20, 'circle-color':'#0a84ff22', 'circle-stroke-width':1, 'circle-stroke-color':'#0a84ff66' }
+            });
+            setHasAccLayer(true);
+          } else {
+            map.getSource('user-acc-src').setData({ type:'FeatureCollection', features:[{ type:'Feature', geometry:{ type:'Point', coordinates:center } }] });
+          }
+          // rayon approx en pixels (fonction d’affichage)
+          var meters = Math.max(5, Math.min(acc || 30, 200));
+          var metersToPixelsAtLat = function(m, lat0){ return m / (0.075 * Math.cos((lat0 * Math.PI)/180)); };
+          var radiusPx = metersToPixelsAtLat(meters, lat);
+          map.setPaintProperty('user-accuracy', 'circle-radius', radiusPx);
         }
 
         function renderMarkers(){
@@ -182,7 +196,6 @@
         }
 
         function addAtCenter(){ var c = mapRef.current.getCenter(); addAt(c.lng, c.lat); }
-
         function centerOnMe(){
           if(userPos) mapRef.current.flyTo({ center:[userPos.lng,userPos.lat], zoom:16, essential:true });
           else alert('Active la localisation pour te centrer 🙂');
