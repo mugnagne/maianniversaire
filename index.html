@@ -24,6 +24,8 @@
     .muted{ color:#666 }
 
     .mk{ width:22px; height:22px; border-radius:999px; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.25); cursor:pointer }
+    .lbl{ white-space:nowrap; font-size:12px; padding:2px 6px; border-radius:10px; background:var(--bg); border:1px solid #eee; box-shadow:0 2px 6px rgba(0,0,0,.15); transform:translateY(-6px); }
+
     .route-badge{ position:fixed; left:50%; transform:translateX(-50%); bottom:78px; z-index:5 }
   </style>
 </head>
@@ -34,6 +36,7 @@
     <div class="card">Brest Pocket Guide</div>
     <div style="display:flex; gap:8px">
       <button id="btn-list" class="card" aria-label="Ouvrir la liste">Lieux (0)</button>
+      <button id="btn-labels" class="card" aria-label="Afficher/masquer les noms">Noms</button>
       <button id="btn-add" class="card" aria-label="Mode ajout">Ajout</button>
     </div>
   </div>
@@ -118,13 +121,16 @@
   // ---------- State ----------
   let points = loadPoints();
   let addingMode = false;
-  let markers = {}; // id -> Marker
+  let showLabels = false;          // <— NOUVEAU
+  let markers = {};                // id -> Marker
+  let labelMarkers = {};           // id -> Marker (labels)
 
   function loadPoints(){ try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(e){ return []; } }
   function savePoints(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(points)); }
 
   // ---------- UI refs ----------
   const btnAdd        = document.getElementById('btn-add');
+  const btnLabels     = document.getElementById('btn-labels');
   const btnList       = document.getElementById('btn-list');
   const btnAddCenter  = document.getElementById('btn-add-center');
   const btnMeEl       = document.getElementById('btn-me');
@@ -147,15 +153,23 @@
   function rndId(){ return (crypto.randomUUID ? crypto.randomUUID() : 'id-'+Math.random().toString(36).slice(2)); }
   function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
+  function clearLabelMarkers(){
+    Object.values(labelMarkers).forEach(m => m.remove());
+    labelMarkers = {};
+  }
+
   function renderMarkers(){
+    // clear all
     Object.values(markers).forEach(m => m.remove());
     markers = {};
+    clearLabelMarkers();
 
     points.forEach(p => {
+      // marker (color)
       const el = document.createElement('div');
       el.className = 'mk';
       el.style.background = p.color || '#FF3366';
-      // IMPORTANT: empêcher la carte d'interpréter le clic comme un pan
+      // empêcher la carte de pan au clic
       el.addEventListener('mousedown', e => e.stopPropagation());
       el.addEventListener('touchstart', e => e.stopPropagation(), {passive:true});
       el.addEventListener('click', e => { e.stopPropagation(); openPopupFor(p); });
@@ -170,6 +184,22 @@
       });
 
       markers[p.id] = marker;
+
+      // label (optionnel)
+      if (showLabels) {
+        const lbl = document.createElement('div');
+        lbl.className = 'lbl';
+        lbl.textContent = p.title || 'Point';
+        // clic sur label = ouvrir le popup
+        lbl.addEventListener('mousedown', e => e.stopPropagation());
+        lbl.addEventListener('touchstart', e => e.stopPropagation(), {passive:true});
+        lbl.addEventListener('click', e => { e.stopPropagation(); openPopupFor(p); });
+
+        const lblMarker = new maplibregl.Marker({ element: lbl, draggable:false, offset:[0, -22] })
+          .setLngLat([p.lng, p.lat])
+          .addTo(map);
+        labelMarkers[p.id] = lblMarker;
+      }
     });
 
     updateList();
@@ -262,7 +292,7 @@
     });
   }
 
-  // ---------- Route (OSRM) ----------
+  // ---------- Route (OSRM – profil walking déjà actif) ----------
   function clearRoute(){
     if (map.getLayer(ROUTE_LINE)) map.removeLayer(ROUTE_LINE);
     if (map.getSource(ROUTE_SRC)) map.removeSource(ROUTE_SRC);
@@ -286,6 +316,7 @@
   }
 
   function fetchRoute(start, end){
+    // WALKING -> durée = temps à pied
     const url = 'https://router.project-osrm.org/route/v1/walking/'
                 + start.join(',') + ';' + end.join(',')
                 + '?overview=full&geometries=geojson&alternatives=false&steps=false';
@@ -300,8 +331,8 @@
         map.addSource(ROUTE_SRC, { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates: coords } } });
         map.addLayer({ id:ROUTE_LINE, type:'line', source:ROUTE_SRC, paint:{ 'line-color':'#007AFF', 'line-width':4, 'line-opacity':0.9 } });
 
-        const distKm = Math.round(route.distance/10)/100;
-        const durMin = Math.round(route.duration/60);
+        const distKm = Math.round(route.distance/10)/100; // m->km
+        const durMin = Math.round(route.duration/60);      // s->min (à pied)
         routeText.textContent = `➜ ${distKm} km • ~${durMin} min`;
         routeBadge.style.display = 'block';
         fitToCoords(coords);
@@ -309,47 +340,44 @@
       .catch(err => { console.warn('OSRM', err); alert("Impossible d'obtenir l’itinéraire (réseau/API)."); });
   }
 
-  // ---------- Click vs Drag: ajout desktop ----------
-  let isMouseDown = false;
-  let startPt = null;
-  let moved = false;
-
+  // ---------- Click vs Drag pour l'ajout (desktop) ----------
+  let isMouseDown = false, startPt = null, moved = false;
   map.on('mousedown', (e) => {
     if (!addingMode) return;
-    if (e.originalEvent.button !== 0) return; // bouton gauche uniquement
-    isMouseDown = true;
-    moved = false;
-    startPt = e.point;
+    if (e.originalEvent.button !== 0) return;
+    isMouseDown = true; moved = false; startPt = e.point;
   });
   map.on('mousemove', (e) => {
     if (!isMouseDown) return;
-    const dx = e.point.x - startPt.x;
-    const dy = e.point.y - startPt.y;
+    const dx = e.point.x - startPt.x, dy = e.point.y - startPt.y;
     if ((dx*dx + dy*dy) > 25) moved = true; // >5px
   });
   map.on('mouseup', (e) => {
-    if (!isMouseDown) return;
-    isMouseDown = false;
+    if (!isMouseDown) return; isMouseDown = false;
     if (!moved && addingMode) addPoint(e.lngLat.lng, e.lngLat.lat);
   });
-  map.on('dragstart', () => { moved = true; }); // si la carte commence à bouger, on n’ajoute pas
+  map.on('dragstart', () => { moved = true; });
 
   // Long-press (mobile)
   let pressTimer=null;
-  map.on('touchstart', e => {
-    if(!addingMode) return;
-    pressTimer = setTimeout(() => addPoint(e.lngLat.lng, e.lngLat.lat), 450);
-  });
+  map.on('touchstart', e => { if(!addingMode) return; pressTimer = setTimeout(() => addPoint(e.lngLat.lng, e.lngLat.lat), 450); });
   map.on('touchend', () => { if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
 
-  // ---------- Buttons / UI ----------
-  document.getElementById('btn-me').onclick = () => { try{ geo.trigger(); }catch(e){} };
+  // ---------- Buttons ----------
+  btnMeEl.onclick = () => { try{ geo.trigger(); }catch(e){} };
 
   btnAdd.onclick = () => {
     addingMode = !addingMode;
     btnAdd.style.background = addingMode ? `linear-gradient(90deg, var(--pink), var(--orange))` : 'var(--bg)';
     btnAdd.style.color = addingMode ? '#fff' : '#000';
     btnAdd.textContent = addingMode ? 'Ajout ON' : 'Ajout';
+  };
+
+  btnLabels.onclick = () => {
+    showLabels = !showLabels;
+    btnLabels.style.background = showLabels ? `linear-gradient(90deg, var(--pink), var(--orange))` : 'var(--bg)';
+    btnLabels.style.color = showLabels ? '#fff' : '#000';
+    renderMarkers(); // recrée les marqueurs + labels
   };
 
   btnList.onclick = () => { drawer.style.display = 'block'; updateList(); };
