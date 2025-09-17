@@ -129,19 +129,37 @@
   const ROUTE_SRC = 'route-src';
   const ROUTE_LINE = 'route-line';
 
-  // ------- Style sombre CARTO Dark Matter (sans clé) -------
-  const STYLE_URL = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+  // --- CARTO Dark Matter (RASTER, sans clé) ---
+  const STYLE_RASTER_DARK = {
+    version: 8,
+    sources: {
+      'carto-dark': {
+        type: 'raster',
+        tiles: [
+          'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+          'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+          'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+          'https://d.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+        ],
+        tileSize: 256,
+        attribution: '© OpenStreetMap contributors • © CARTO'
+      }
+    },
+    layers: [
+      { id: 'base', type: 'raster', source: 'carto-dark', minzoom: 0, maxzoom: 22 }
+    ],
+    // (pas de sprite/glyphs nécessaires en raster)
+  };
 
-  // ------- Map -------
+  // --- Map ---
   const map = new maplibregl.Map({
     container: 'map',
-    style: STYLE_URL,
+    style: STYLE_RASTER_DARK,
     center: [-4.4861, 48.3904],
     zoom: 12,
     attributionControl: true
   });
   map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'bottom-right');
-
   // Geolocate
   const geo = new maplibregl.GeolocateControl({
     positionOptions: { enableHighAccuracy: true },
