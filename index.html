@@ -5,35 +5,67 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Brest Pocket Guide</title>
 
+  <!-- Favicon citrouille (SVG inline) -->
+  <link rel="icon" href='data:image/svg+xml;utf8,
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+      <rect width="64" height="64" rx="12" ry="12" fill="%230B0B0F"/>
+      <g transform="translate(0,2)">
+        <ellipse cx="32" cy="36" rx="20" ry="18" fill="%23FF7A00"/>
+        <ellipse cx="22" cy="36" rx="12" ry="16" fill="%23FF6A00"/>
+        <ellipse cx="42" cy="36" rx="12" ry="16" fill="%23FF6A00"/>
+        <rect x="30" y="9" width="6" height="10" rx="2" fill="%233A8F2E"/>
+        <path d="M29,12 C26,8 22,8 20,10" stroke="%233A8F2E" stroke-width="2" fill="none"/>
+        <circle cx="26" cy="32" r="3" fill="%230B0B0F"/>
+        <circle cx="38" cy="32" r="3" fill="%230B0B0F"/>
+        <path d="M24,40 C28,43 36,43 40,40" stroke="%230B0B0F" stroke-width="3" fill="none" stroke-linecap="round"/>
+      </g>
+    </svg>' />
+
+  <!-- Google Fonts: Amarante -->
+  <link href="https://fonts.googleapis.com/css2?family=Amarante&display=swap" rel="stylesheet">
+
+  <!-- MapLibre GL -->
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" />
   <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
 
   <style>
-    :root { --pink:#FF3366; --orange:#FF5733; --bg:#fff9; }
+    :root {
+      --pink:#FF3366; --orange:#FF5733;
+      --bg: rgba(255,255,255,0.06);
+      --bg-strong: rgba(255,255,255,0.10);
+      --border: rgba(255,255,255,0.16);
+      --shadow: 0 8px 28px rgba(0,0,0,.45);
+      --text: #FFFFFF; --muted:#A7A7A7;
+      --accent:#7CB8FF;
+    }
     *{ box-sizing: border-box }
-    html,body{ height:100%; margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Helvetica, Arial }
+    html,body{ height:100%; margin:0; background:#0B0B0F; color:var(--text); font-family:"Amarante", system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Helvetica, Arial }
     #map{ position:fixed; inset:0 }
 
     .topbar{ position:fixed; top:10px; left:12px; right:12px; display:flex; gap:8px; justify-content:space-between; z-index:5 }
-    .card{ background:var(--bg); backdrop-filter: blur(6px); padding:8px 12px; border-radius:16px; box-shadow:0 6px 16px rgba(0,0,0,.12); font-weight:600 }
+    .card{ background:var(--bg); backdrop-filter: blur(8px); padding:8px 12px; border-radius:16px; box-shadow:var(--shadow); border:1px solid var(--border); font-weight:600; color:var(--text) }
     .fabs{ position:fixed; left:50%; transform:translateX(-50%); bottom:16px; display:flex; gap:8px; z-index:5; flex-wrap:wrap; justify-content:center }
-    .fab{ background:var(--bg); border:1px solid #eee; padding:10px 14px; border-radius:16px; box-shadow:0 6px 16px rgba(0,0,0,.15); font-weight:600 }
+    .fab{ background:var(--bg); border:1px solid var(--border); padding:10px 14px; border-radius:16px; box-shadow:var(--shadow); font-weight:600; color:var(--text) }
 
-    .drawer{ position:fixed; left:0; right:0; bottom:0; background:#fff; border-radius:24px 24px 0 0; box-shadow:0 -8px 24px rgba(0,0,0,.2); max-height:60vh; overflow:auto; padding:16px; z-index:6 }
-    .list-item{ border:1px solid #eee; border-radius:16px; padding:12px; display:grid; gap:6px }
-    .muted{ color:#666 }
+    .drawer{ position:fixed; left:0; right:0; bottom:0; background:#111218; border-radius:24px 24px 0 0; box-shadow:0 -16px 36px rgba(0,0,0,.6); max-height:60vh; overflow:auto; padding:16px; z-index:6; border-top:1px solid var(--border) }
+    .list-item{ border:1px solid var(--border); border-radius:16px; padding:12px; display:grid; gap:6px; background:var(--bg-strong) }
+    .muted{ color:var(--muted) }
 
-    .mk{ width:22px; height:22px; border-radius:999px; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.25); cursor:pointer }
-    .lbl{ white-space:nowrap; font-size:12px; padding:2px 6px; border-radius:10px; background:var(--bg); border:1px solid #eee; box-shadow:0 2px 6px rgba(0,0,0,.15); transform:translateY(-6px); }
+    .mk{ width:22px; height:22px; border-radius:999px; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.45); cursor:pointer }
+    .lbl{ white-space:nowrap; font-size:12px; padding:2px 6px; border-radius:10px; background:var(--bg-strong); border:1px solid var(--border); box-shadow:var(--shadow); transform:translateY(-6px); color:var(--text) }
 
     .route-badge{ position:fixed; left:50%; transform:translateX(-50%); bottom:78px; z-index:5 }
+    button{ color:var(--text) }
+    input, textarea{ background:#0F1016; color:var(--text); border:1px solid var(--border); border-radius:10px; }
+    input[type="color"]{ background:transparent; border:none; }
+    a{ color:var(--accent) }
   </style>
 </head>
 <body>
   <div id="map"></div>
 
   <div class="topbar">
-    <div class="card">Brest Pocket Guide</div>
+    <div class="card">🎃 Brest Pocket Guide</div>
     <div style="display:flex; gap:8px">
       <button id="btn-list" class="card" aria-label="Ouvrir la liste">Lieux (0)</button>
       <button id="btn-labels" class="card" aria-label="Afficher/masquer les noms">Noms</button>
@@ -68,11 +100,11 @@
   </div>
 
   <!-- Modal Import -->
-  <div id="modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.3); backdrop-filter: blur(2px); z-index:7; align-items:flex-end; justify-content:center; padding:16px">
-    <div style="background:#fff; border-radius:24px; box-shadow:0 12px 32px rgba(0,0,0,.25); padding:16px; width:100%; max-width:560px">
+  <div id="modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); backdrop-filter: blur(3px); z-index:7; align-items:flex-end; justify-content:center; padding:16px">
+    <div style="background:#111218; border-radius:24px; box-shadow:0 12px 32px rgba(0,0,0,.6); padding:16px; width:100%; max-width:560px; border:1px solid var(--border)">
       <h3 style="margin:0 0 8px 0">Importer JSON / Astuces</h3>
       <p class="muted">Colle une liste de points (même format que l’export), puis clique Importer.</p>
-      <textarea id="ta" style="width:100%; height:160px; border:1px solid #eee; border-radius:12px; padding:10px" placeholder='[
+      <textarea id="ta" style="width:100%; height:160px; padding:10px" placeholder='[
   {"id":"p1","title":"Crêperie","lng":-4.49,"lat":48.39,"notes":"galettes top","color":"#FF3366"}
 ]'></textarea>
       <div style="display:flex; justify-content:space-between; margin-top:12px">
@@ -82,7 +114,7 @@
           <button class="fab" id="btn-load-ex" style="padding:8px 12px">Charger des exemples</button>
         </div>
       </div>
-      <hr style="margin:12px 0" />
+      <hr style="margin:12px 0; border-color:var(--border)" />
       <div class="muted" style="font-size:12px; display:grid; gap:4px">
         <div>• Active « Ajout » puis fais un <b>appui long</b> sur la carte pour créer un lieu (mobile) ou <b>clic sans bouger</b> (desktop).</div>
         <div>• Les marqueurs sont <b>déplaçables</b>. Tout est sauvegardé en local (localStorage).</div>
@@ -92,14 +124,28 @@
   </div>
 
 <script>
-(function(){
+(async function(){
   const STORAGE_KEY = 'brest-guide-points-v1';
   const ROUTE_SRC = 'route-src';
   const ROUTE_LINE = 'route-line';
 
+  // ------- Style de carte (CARTO Dark Matter, sans clé) -------
+const STYLE_URL = 'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+
+  async function pickStyle(){
+    if (!MAPTILER_KEY || MAPTILER_KEY === 'YOUR_MAPTILER_KEY') return FALLBACK_URL;
+    try {
+      const r = await fetch(DARK_URL, { method:'HEAD' });
+      if (r.ok) return DARK_URL;
+    } catch(e) {}
+    return FALLBACK_URL;
+  }
+  const STYLE_URL = await pickStyle();
+
+  // ------- Map -------
   const map = new maplibregl.Map({
     container: 'map',
-    style: 'https://tiles.openfreemap.org/styles/liberty',
+    style: STYLE_URL,
     center: [-4.4861, 48.3904],
     zoom: 12,
     attributionControl: true
@@ -121,9 +167,9 @@
   // ---------- State ----------
   let points = loadPoints();
   let addingMode = false;
-  let showLabels = false;          // <— NOUVEAU
-  let markers = {};                // id -> Marker
-  let labelMarkers = {};           // id -> Marker (labels)
+  let showLabels = false;
+  let markers = {};      // id -> Marker
+  let labelMarkers = {}; // id -> Marker (labels)
 
   function loadPoints(){ try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(e){ return []; } }
   function savePoints(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(points)); }
@@ -153,13 +199,9 @@
   function rndId(){ return (crypto.randomUUID ? crypto.randomUUID() : 'id-'+Math.random().toString(36).slice(2)); }
   function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
-  function clearLabelMarkers(){
-    Object.values(labelMarkers).forEach(m => m.remove());
-    labelMarkers = {};
-  }
+  function clearLabelMarkers(){ Object.values(labelMarkers).forEach(m => m.remove()); labelMarkers = {}; }
 
   function renderMarkers(){
-    // clear all
     Object.values(markers).forEach(m => m.remove());
     markers = {};
     clearLabelMarkers();
@@ -169,14 +211,12 @@
       const el = document.createElement('div');
       el.className = 'mk';
       el.style.background = p.color || '#FF3366';
-      // empêcher la carte de pan au clic
       el.addEventListener('mousedown', e => e.stopPropagation());
       el.addEventListener('touchstart', e => e.stopPropagation(), {passive:true});
       el.addEventListener('click', e => { e.stopPropagation(); openPopupFor(p); });
 
       const marker = new maplibregl.Marker({ element: el, draggable: true })
-        .setLngLat([p.lng, p.lat])
-        .addTo(map);
+        .setLngLat([p.lng, p.lat]).addTo(map);
 
       marker.on('dragend', () => {
         const c = marker.getLngLat();
@@ -185,19 +225,17 @@
 
       markers[p.id] = marker;
 
-      // label (optionnel)
+      // label optionnel
       if (showLabels) {
         const lbl = document.createElement('div');
         lbl.className = 'lbl';
         lbl.textContent = p.title || 'Point';
-        // clic sur label = ouvrir le popup
         lbl.addEventListener('mousedown', e => e.stopPropagation());
         lbl.addEventListener('touchstart', e => e.stopPropagation(), {passive:true});
         lbl.addEventListener('click', e => { e.stopPropagation(); openPopupFor(p); });
 
         const lblMarker = new maplibregl.Marker({ element: lbl, draggable:false, offset:[0, -22] })
-          .setLngLat([p.lng, p.lat])
-          .addTo(map);
+          .setLngLat([p.lng, p.lat]).addTo(map);
         labelMarkers[p.id] = lblMarker;
       }
     });
@@ -206,45 +244,34 @@
     btnList.innerText = `Lieux (${points.length})`;
   }
 
+  // --- popup robuste (handlers avant insertion) ---
   function openPopupFor(p){
-  // Contenu du popup en DOM (pas en innerHTML direct sur le popup)
-  const wrap = document.createElement('div');
-  wrap.style.minWidth = '220px';
-  wrap.innerHTML = `
-    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px">
-      <div style="width:14px; height:14px; border-radius:999px; background:${p.color||'#FF3366'}; border:2px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.25)"></div>
-      <strong>${(p.title || 'Point').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}</strong>
-    </div>
-    <div style="font-size:12px; color:#555; margin-bottom:8px">${(p.notes||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}</div>
-    <div style="display:flex; gap:6px; flex-wrap:wrap">
-      <button data-act="route"  class="ml-btn">Itinéraire</button>
-      <button data-act="edit"   class="ml-btn">Modifier</button>
-      <button data-act="delete" class="ml-btn" style="color:#d00">Supprimer</button>
-    </div>
-  `;
+    const wrap = document.createElement('div');
+    wrap.style.minWidth = '220px';
+    wrap.innerHTML = `
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px">
+        <div style="width:14px; height:14px; border-radius:999px; background:${p.color||'#FF3366'}; border:2px solid #fff; box-shadow:0 1px 3px rgba(0,0,0,.25)"></div>
+        <strong>${escapeHtml(p.title || 'Point')}</strong>
+      </div>
+      <div style="font-size:12px; color:#DDD; margin-bottom:8px">${escapeHtml(p.notes||'')}</div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap">
+        <button data-act="route"  class="ml-btn">Itinéraire</button>
+        <button data-act="edit"   class="ml-btn">Modifier</button>
+        <button data-act="delete" class="ml-btn" style="color:#ff8a8a">Supprimer</button>
+      </div>
+    `;
+    wrap.addEventListener('mousedown', e => e.stopPropagation());
+    wrap.addEventListener('touchstart', e => e.stopPropagation(), {passive:true});
+    wrap.addEventListener('click', e => e.stopPropagation());
 
-  // Empêcher le clic dans le popup de remonter à la carte
-  wrap.addEventListener('mousedown', e => e.stopPropagation());
-  wrap.addEventListener('touchstart', e => e.stopPropagation(), {passive:true});
-  wrap.addEventListener('click', e => e.stopPropagation());
+    let popup;
+    wrap.querySelector('[data-act="route"]').addEventListener('click', (e)=>{ e.stopPropagation(); routeToPoint(p); });
+    wrap.querySelector('[data-act="edit"]').addEventListener('click',  (e)=>{ e.stopPropagation(); popup.remove(); editPoint(p.id); });
+    wrap.querySelector('[data-act="delete"]').addEventListener('click',(e)=>{ e.stopPropagation(); popup.remove(); removePoint(p.id); });
 
-  let popup; // défini après pour que les handlers y aient accès
-
-  // Attacher les handlers AVANT d’afficher le popup
-  const routeBtn  = wrap.querySelector('[data-act="route"]');
-  const editBtn   = wrap.querySelector('[data-act="edit"]');
-  const deleteBtn = wrap.querySelector('[data-act="delete"]');
-
-  routeBtn.addEventListener('click', (e) => { e.stopPropagation(); routeToPoint(p); });
-  editBtn.addEventListener('click',  (e) => { e.stopPropagation(); popup.remove(); editPoint(p.id); });
-  deleteBtn.addEventListener('click',(e) => { e.stopPropagation(); popup.remove(); removePoint(p.id); });
-
-  // Créer / afficher le popup avec ce contenu déjà câblé
-  popup = new maplibregl.Popup({ closeOnClick: true, maxWidth: '280px' })
-    .setLngLat([p.lng, p.lat])
-    .setDOMContent(wrap)
-    .addTo(map);
-}
+    popup = new maplibregl.Popup({ closeOnClick: true, maxWidth: '280px' })
+      .setLngLat([p.lng, p.lat]).setDOMContent(wrap).addTo(map);
+  }
 
   function addPoint(lng, lat){
     const title = prompt('Titre du lieu ?', 'Nouveau point');
@@ -253,15 +280,8 @@
     const p = { id: rndId(), title: title.trim() || 'Point', notes:'', lng, lat, color };
     points.push(p); savePoints(); renderMarkers(); openPopupFor(p);
   }
-  function updatePoint(id, patch){
-    points = points.map(x => x.id === id ? Object.assign({}, x, patch) : x);
-    savePoints(); renderMarkers();
-  }
-  function removePoint(id){
-    points = points.filter(x => x.id !== id);
-    savePoints(); renderMarkers();
-    clearRoute();
-  }
+  function updatePoint(id, patch){ points = points.map(x => x.id === id ? Object.assign({}, x, patch) : x); savePoints(); renderMarkers(); }
+  function removePoint(id){ points = points.filter(x => x.id !== id); savePoints(); renderMarkers(); clearRoute(); }
   function editPoint(id){
     const p = points.find(x => x.id === id); if(!p) return;
     const t = prompt('Titre', p.title || ''); if (t === null) return;
@@ -282,9 +302,9 @@
           <input value="${escapeHtml(p.title)}" style="font-weight:700; border:none; outline:none; flex:1; min-width:140px" />
           <button data-act="fly">Voir</button>
           <button data-act="route">Itinéraire</button>
-          <button data-act="del" style="color:#d00">Supprimer</button>
+          <button data-act="del" style="color:#ff8a8a">Supprimer</button>
         </div>
-        <textarea placeholder="Notes" style="border:1px solid #eee; border-radius:10px; padding:8px; min-height:60px">${escapeHtml(p.notes||'')}</textarea>
+        <textarea placeholder="Notes" style="padding:8px; min-height:60px">${escapeHtml(p.notes||'')}</textarea>
         <div class="muted" style="display:flex; align-items:center; gap:8px; font-size:12px">
           <label>Couleur</label>
           <input type="color" value="${p.color||'#FF3366'}" />
@@ -304,13 +324,9 @@
     });
   }
 
-  // ---------- Route (OSRM – profil walking déjà actif) ----------
-  function clearRoute(){
-    if (map.getLayer(ROUTE_LINE)) map.removeLayer(ROUTE_LINE);
-    if (map.getSource(ROUTE_SRC)) map.removeSource(ROUTE_SRC);
-    routeBadge.style.display = 'none';
-  }
-  document.getElementById('btn-clear-route').onclick = clearRoute;
+  // ---------- Route (OSRM – walking) ----------
+  function clearRoute(){ if (map.getLayer(ROUTE_LINE)) map.removeLayer(ROUTE_LINE); if (map.getSource(ROUTE_SRC)) map.removeSource(ROUTE_SRC); routeBadge.style.display = 'none'; }
+  btnClearRoute.onclick = clearRoute;
 
   function fitToCoords(coords){
     let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
@@ -321,31 +337,23 @@
   function routeToPoint(p){
     if (currentPos) return fetchRoute([currentPos.lng, currentPos.lat], [p.lng, p.lat]);
     try { geo.trigger(); } catch(e){}
-    setTimeout(() => {
-      if (currentPos) fetchRoute([currentPos.lng, currentPos.lat], [p.lng, p.lat]);
-      else alert('Active la localisation (icône cible à droite) puis réessaie.');
-    }, 1200);
+    setTimeout(() => { if (currentPos) fetchRoute([currentPos.lng, currentPos.lat], [p.lng, p.lat]); else alert('Active la localisation (icône cible à droite) puis réessaie.'); }, 1200);
   }
 
   function fetchRoute(start, end){
-    // WALKING -> durée = temps à pied
-    const url = 'https://router.project-osrm.org/route/v1/walking/'
-                + start.join(',') + ';' + end.join(',')
-                + '?overview=full&geometries=geojson&alternatives=false&steps=false';
+    const url = 'https://router.project-osrm.org/route/v1/walking/' + start.join(',') + ';' + end.join(',') + '?overview=full&geometries=geojson&alternatives=false&steps=false';
     fetch(url)
       .then(r => { if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
       .then(data => {
         if(!data || !data.routes || !data.routes.length) throw new Error('No route');
         const route = data.routes[0];
         const coords = route.geometry.coordinates;
-
         clearRoute();
         map.addSource(ROUTE_SRC, { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates: coords } } });
-        map.addLayer({ id:ROUTE_LINE, type:'line', source:ROUTE_SRC, paint:{ 'line-color':'#007AFF', 'line-width':4, 'line-opacity':0.9 } });
-
+        map.addLayer({ id:ROUTE_LINE, type:'line', source:ROUTE_SRC, paint:{ 'line-color':'#5EA0FF', 'line-width':4, 'line-opacity':0.95 } });
         const distKm = Math.round(route.distance/10)/100; // m->km
-        const durMin = Math.round(route.duration/60);      // s->min (à pied)
-        routeText.textContent = `➜ ${distKm} km • ~${durMin} min`;
+        const durMin = Math.round(route.duration/60);      // s->min (walking)
+        routeText.textContent = `➜ ${distKm} km • ~${durMin} min à pied`;
         routeBadge.style.display = 'block';
         fitToCoords(coords);
       })
@@ -381,15 +389,15 @@
   btnAdd.onclick = () => {
     addingMode = !addingMode;
     btnAdd.style.background = addingMode ? `linear-gradient(90deg, var(--pink), var(--orange))` : 'var(--bg)';
-    btnAdd.style.color = addingMode ? '#fff' : '#000';
+    btnAdd.style.color = addingMode ? '#fff' : '#fff';
     btnAdd.textContent = addingMode ? 'Ajout ON' : 'Ajout';
   };
 
   btnLabels.onclick = () => {
     showLabels = !showLabels;
     btnLabels.style.background = showLabels ? `linear-gradient(90deg, var(--pink), var(--orange))` : 'var(--bg)';
-    btnLabels.style.color = showLabels ? '#fff' : '#000';
-    renderMarkers(); // recrée les marqueurs + labels
+    btnLabels.style.color = '#fff';
+    renderMarkers();
   };
 
   btnList.onclick = () => { drawer.style.display = 'block'; updateList(); };
