@@ -69,6 +69,7 @@
     <div style="display:flex; gap:8px">
       <button id="btn-list" class="card" aria-label="Ouvrir la liste">Lieux (0)</button>
       <button id="btn-labels" class="card" aria-label="Afficher/masquer les noms">Noms</button>
+      <button id="btn-style" class="card" aria-label="Changer de style">Style</button>
       <button id="btn-add" class="card" aria-label="Mode ajout">Ajout</button>
     </div>
   </div>
@@ -129,7 +130,8 @@
   const ROUTE_SRC = 'route-src';
   const ROUTE_LINE = 'route-line';
 
-  // ------- Style sombre CARTO Dark Matter (RASTER, sans clé) -------
+  // ------- Styles de carte -------
+  // 1) Dark CARTO (raster, sans clé)
   const STYLE_RASTER_DARK = {
     version: 8,
     sources: {
@@ -145,10 +147,13 @@
         attribution: '© OpenStreetMap contributors • © CARTO'
       }
     },
-    layers: [
-      { id: 'base', type: 'raster', source: 'carto-dark', minzoom: 0, maxzoom: 22 }
-    ]
+    layers: [{ id: 'base', type: 'raster', source: 'carto-dark', minzoom: 0, maxzoom: 22 }]
   };
+  // 2) Liberty (OpenFreeMap vector, clair)
+  const STYLE_LIBERTY_URL = 'https://tiles.openfreemap.org/styles/liberty';
+
+  let currentStyle = 'dark';        // 'dark' | 'liberty'
+  let lastRouteGeoJson = null;      // stocke la route pour la réappliquer après switch
 
   // ------- Map -------
   const map = new maplibregl.Map({
@@ -174,7 +179,7 @@
 
   // ---------- Helpers ----------
   function rndId(){ return (crypto.randomUUID ? crypto.randomUUID() : 'id-'+Math.random().toString(36).slice(2)); }
-  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39'}[m])); }
 
   // ---------- State ----------
   let points = loadPoints();
@@ -229,7 +234,7 @@
     document.getElementById('btn-list').innerText = `Lieux (${points.length})`;
   }
 
-  // --- popup robuste (handlers avant insertion) ---
+  // --- popup robuste ---
   function openPopupFor(p){
     const wrap = document.createElement('div');
     wrap.style.minWidth = '220px';
@@ -303,7 +308,12 @@
   }
 
   // ---------- Route (OSRM – walking) ----------
-  function clearRoute(){ if (map.getLayer(ROUTE_LINE)) map.removeLayer(ROUTE_LINE); if (map.getSource(ROUTE_SRC)) map.removeSource(ROUTE_SRC); document.getElementById('route-badge').style.display = 'none'; }
+  function clearRoute(){
+    if (map.getLayer(ROUTE_LINE)) map.removeLayer(ROUTE_LINE);
+    if (map.getSource(ROUTE_SRC)) map.removeSource(ROUTE_SRC);
+    lastRouteGeoJson = null;
+    document.getElementById('route-badge').style.display = 'none';
+  }
   document.getElementById('btn-clear-route').onclick = clearRoute;
 
   function fitToCoords(coords){
@@ -313,14 +323,19 @@
   }
 
   function routeToPoint(p){
-    const badge = document.getElementById('route-badge');
-    const text = document.getElementById('route-text');
     if (currentPos) return fetchRoute([currentPos.lng, currentPos.lat], [p.lng, p.lat]);
     try { geo.trigger(); } catch(e){}
     setTimeout(() => {
       if (currentPos) fetchRoute([currentPos.lng, currentPos.lat], [p.lng, p.lat]);
       else alert('Active la localisation (icône cible à droite) puis réessaie.');
     }, 1200);
+  }
+
+  function applyRouteLayer(){
+    if (!lastRouteGeoJson) return;
+    map.addSource(ROUTE_SRC, { type:'geojson', data:lastRouteGeoJson });
+    map.addLayer({ id:ROUTE_LINE, type:'line', source:ROUTE_SRC,
+                   paint:{ 'line-color':'#5EA0FF', 'line-width':4, 'line-opacity':0.95 } });
   }
 
   function fetchRoute(start, end){
@@ -331,9 +346,13 @@
         if(!data || !data.routes || !data.routes.length) throw new Error('No route');
         const route = data.routes[0];
         const coords = route.geometry.coordinates;
-        clearRoute();
-        map.addSource(ROUTE_SRC, { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates: coords } } });
-        map.addLayer({ id:ROUTE_LINE, type:'line', source:ROUTE_SRC, paint:{ 'line-color':'#5EA0FF', 'line-width':4, 'line-opacity':0.95 } });
+
+        lastRouteGeoJson = { type:'Feature', geometry:{ type:'LineString', coordinates: coords } };
+
+        if (map.getLayer(ROUTE_LINE)) map.removeLayer(ROUTE_LINE);
+        if (map.getSource(ROUTE_SRC)) map.removeSource(ROUTE_SRC);
+        applyRouteLayer();
+
         const distKm = Math.round(route.distance/10)/100; // m->km
         const durMin = Math.round(route.duration/60);      // s->min (walking)
         document.getElementById('route-text').textContent = `➜ ${distKm} km • ~${durMin} min à pied`;
@@ -385,8 +404,7 @@
     renderMarkers();
   };
 
-  const btnList = document.getElementById('btn-list');
-  btnList.onclick = () => { document.getElementById('drawer').style.display = 'block'; updateList(); };
+  document.getElementById('btn-list').onclick = () => { document.getElementById('drawer').style.display = 'block'; updateList(); };
   document.getElementById('btn-close-drawer').onclick = () => { document.getElementById('drawer').style.display = 'none'; };
 
   document.getElementById('btn-add-center').onclick = () => { const c = map.getCenter(); addPoint(c.lng, c.lat); };
@@ -426,6 +444,19 @@
     const a = document.createElement('a');
     a.href = url; a.download = 'brest-guide-points.json'; a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // --- Toggle de style ---
+  document.getElementById('btn-style').onclick = () => {
+    if (currentStyle === 'dark') {
+      currentStyle = 'liberty';
+      map.setStyle(STYLE_LIBERTY_URL);
+    } else {
+      currentStyle = 'dark';
+      map.setStyle(STYLE_RASTER_DARK);
+    }
+    // réappliquer la route quand la nouvelle feuille de style est prête
+    map.once('styledata', () => { if (lastRouteGeoJson) applyRouteLayer(); });
   };
 
   // Init
