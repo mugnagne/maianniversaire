@@ -56,9 +56,9 @@
         const mapRef = React.useRef(null);
         const containerRef = React.useRef(null);
 
-        const userWrapRef   = React.useRef(null);   // element qui tourne (flèche + dot)
-        const userMarkerRef = React.useRef(null);   // maplibre marker
-        const [hasAccLayer, setHasAccLayer] = React.useState(false);
+        const userWrapRef   = React.useRef(null);   // flèche + dot (HTML)
+        const userMarkerRef = React.useRef(null);   // marker MapLibre qui porte le HTML
+        const [accLayerReady, setAccLayerReady] = React.useState(false);
 
         const [points,setPoints] = React.useState(function(){ try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(e){ return []; } });
         const [adding,setAdding] = React.useState(false);
@@ -69,26 +69,18 @@
 
         React.useEffect(function(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(points)); }, [points]);
 
-        /* Init carte + contrôles */
+        /* Init carte */
         React.useEffect(function(){
           if(mapRef.current||!containerRef.current) return;
           var map = new maplibregl.Map({ container: containerRef.current, style: OSM_RASTER_STYLE, center: [-4.4861,48.3904], zoom: 12, attributionControl: true });
+          map.addControl(new maplibregl.NavigationControl({showCompass:true}), 'bottom-right');
           mapRef.current = map;
 
-          map.addControl(new maplibregl.NavigationControl({showCompass:false}), 'bottom-right');
+          map.on('load', function(){ renderMarkers(); });
 
-          // GeolocateControl utilisé seulement pour l'autorisation + recenter (on désactive l'affichage natif)
-          var geo = new maplibregl.GeolocateControl({
-            positionOptions: { enableHighAccuracy: true },
-            trackUserLocation: true,
-            showUserLocation: false,      // <-- pas de dot natif
-            showAccuracyCircle: false     // <-- pas de cercle natif
-          });
-          map.addControl(geo, 'bottom-right');
-
-          map.on('load', function(){
-            renderMarkers();
-            try { geo.trigger(); } catch(e) {}
+          // Recalcule rayon/rotation à chaque mouvement/rotation/zoom
+          ['move','zoom','rotate','pitch'].forEach(function(ev){
+            map.on(ev, function(){ if(userPos){ updateAccuracyCircle(userPos.lng, userPos.lat, userPos.acc); rotateForMapBearing(); } });
           });
 
           // Long-press pour ajouter
@@ -103,16 +95,17 @@
           var id = navigator.geolocation.watchPosition(function(pos){
             var lng = pos.coords.longitude, lat = pos.coords.latitude, acc = pos.coords.accuracy || 30;
             setUserPos({ lng: lng, lat: lat, acc: acc });
-            if (typeof pos.coords.heading === 'number' && !isNaN(pos.coords.heading)) setHeading(pos.coords.heading);
-            updateUserMarker(lng, lat);
+            ensureUserMarker(); userMarkerRef.current.setLngLat([lng, lat]);
             updateAccuracyCircle(lng, lat, acc);
+            // heading GPS (utile en déplacement)
+            if (typeof pos.coords.heading === 'number' && !isNaN(pos.coords.heading)) { setHeading(pos.coords.heading); rotateForMapBearing(); }
           }, function(err){ console.warn('Geolocation error:', err && err.message); }, { enableHighAccuracy:true, maximumAge:5000, timeout:15000 });
           return function(){ if(navigator.geolocation.clearWatch) navigator.geolocation.clearWatch(id); };
         }, []);
 
         React.useEffect(function(){ renderMarkers(); }, [points]);
 
-        /* Boussole: DeviceOrientation (meilleure à l'arrêt). */
+        /* Boussole (DeviceOrientation) — clique sur “🧭 Boussole” pour iOS */
         function enableCompass(){
           if (window.DeviceOrientationEvent && typeof window.DeviceOrientationEvent.requestPermission === 'function') {
             window.DeviceOrientationEvent.requestPermission().then(function(resp){
@@ -128,17 +121,43 @@
         function listenOrientation(){
           window.addEventListener('deviceorientation', function(e){
             var h = null;
-            if (typeof e.webkitCompassHeading === 'number') h = e.webkitCompassHeading;
-            else if (typeof e.alpha === 'number') { h = (360 - e.alpha + 90) % 360; if (h < 0) h += 360; }
-            if (h !== null) { setHeading(h); rotateUserMarker(h); }
+            if (typeof e.webkitCompassHeading === 'number') {
+              h = e.webkitCompassHeading; // iOS : 0 = Nord
+            } else if (typeof e.alpha === 'number') {
+              // Android: alpha(0=Est) -> cap (0=Nord)
+              h = (360 - e.alpha + 90) % 360; if (h < 0) h += 360;
+            }
+            if (h !== null) { setHeading(h); rotateForMapBearing(); }
           }, true);
         }
 
-        function rotateUserMarker(deg){
-          if (userWrapRef.current) userWrapRef.current.style.transform = 'rotate(' + deg + 'deg)';
+        function metersPerPixelAtLat(zoom, lat){
+          // formule Mercator Web : 156543.03392 * cos(lat) / 2^zoom  (mètres / pixel)
+          return 156543.03392 * Math.cos(lat * Math.PI / 180) / Math.pow(2, zoom);
         }
 
-        function ensureUserWrap(){
+        function updateAccuracyCircle(lng, lat, acc){
+          var map = mapRef.current; if(!map) return;
+          var center = [lng, lat];
+
+          if (!accLayerReady) {
+            map.addSource('user-acc-src', { type:'geojson', data:{ type:'FeatureCollection', features:[{ type:'Feature', geometry:{ type:'Point', coordinates:center } }] } });
+            map.addLayer({ id:'user-accuracy', type:'circle', source:'user-acc-src',
+              paint:{ 'circle-radius': 20, 'circle-color':'#0a84ff22', 'circle-stroke-width':1, 'circle-stroke-color':'#0a84ff66' }
+            });
+            setAccLayerReady(true);
+          } else {
+            map.getSource('user-acc-src').setData({ type:'FeatureCollection', features:[{ type:'Feature', geometry:{ type:'Point', coordinates:center } }] });
+          }
+
+          // Convertit la précision (m) en pixels au zoom/latitude actuels
+          var mpp = metersPerPixelAtLat(map.getZoom(), lat);          // mètres/pixel
+          var radiusPx = Math.max(5, Math.min(acc || 30, 400)) / mpp; // bornes pour éviter les énormes cercles
+          map.setPaintProperty('user-accuracy', 'circle-radius', radiusPx);
+        }
+
+        function ensureUserMarker(){
+          var map = mapRef.current; if(!map) return;
           if (!userWrapRef.current) {
             var wrap = document.createElement('div'); wrap.className = 'me-wrap';
             var arrow = document.createElement('div'); arrow.className = 'me-arrow';
@@ -146,37 +165,18 @@
             wrap.appendChild(arrow); wrap.appendChild(dot);
             userWrapRef.current = wrap;
           }
-        }
-
-        function updateUserMarker(lng, lat){
-          var map = mapRef.current; if(!map) return;
-          ensureUserWrap();
           if (!userMarkerRef.current) {
-            userMarkerRef.current = new maplibregl.Marker({ element: userWrapRef.current }).setLngLat([lng, lat]).addTo(mapRef.current);
-          } else {
-            userMarkerRef.current.setLngLat([lng, lat]);
+            userMarkerRef.current = new maplibregl.Marker({ element: userWrapRef.current }).setLngLat(map.getCenter()).addTo(map);
           }
-          if (heading !== null) rotateUserMarker(heading);
         }
 
-        // Cercle de précision (custom layer) — une seule instance
-        function updateAccuracyCircle(lng, lat, acc){
-          var map = mapRef.current; if(!map) return;
-          var center = [lng, lat];
-          if (!hasAccLayer) {
-            map.addSource('user-acc-src', { type:'geojson', data:{ type:'FeatureCollection', features:[{ type:'Feature', geometry:{ type:'Point', coordinates:center } }] } });
-            map.addLayer({ id:'user-accuracy', type:'circle', source:'user-acc-src',
-              paint:{ 'circle-radius': 20, 'circle-color':'#0a84ff22', 'circle-stroke-width':1, 'circle-stroke-color':'#0a84ff66' }
-            });
-            setHasAccLayer(true);
-          } else {
-            map.getSource('user-acc-src').setData({ type:'FeatureCollection', features:[{ type:'Feature', geometry:{ type:'Point', coordinates:center } }] });
+        function rotateForMapBearing(){
+          // Fait pointer la flèche vers la direction réelle à l’écran (heading - bearing de la carte)
+          if (userWrapRef.current && heading !== null && mapRef.current) {
+            var bearing = mapRef.current.getBearing() || 0; // degrés (Est=90, Nord=0)
+            var angle = (heading - bearing + 360) % 360;
+            userWrapRef.current.style.transform = 'rotate(' + angle + 'deg)';
           }
-          // rayon approx en pixels (fonction d’affichage)
-          var meters = Math.max(5, Math.min(acc || 30, 200));
-          var metersToPixelsAtLat = function(m, lat0){ return m / (0.075 * Math.cos((lat0 * Math.PI)/180)); };
-          var radiusPx = metersToPixelsAtLat(meters, lat);
-          map.setPaintProperty('user-accuracy', 'circle-radius', radiusPx);
         }
 
         function renderMarkers(){
@@ -305,7 +305,7 @@
                   <div className="muted" style={{fontSize:12,display:'grid',gap:4}}>
                     <div>• Active « Ajout » puis fais un <b>appui long</b> sur la carte pour créer un lieu.</div>
                     <div>• Les marqueurs sont <b>déplaçables</b>. Tout est sauvegardé en local (localStorage).</div>
-                    <div>• Bouton <b>Moi</b> pour te recentrer. Active la <b>🧭 Boussole</b> pour voir la flèche de direction.</div>
+                    <div>• Bouton <b>Moi</b> pour te recentrer. Active la <b>🧭 Boussole</b> pour la flèche.</div>
                   </div>
                 </div>
               </div>
