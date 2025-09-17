@@ -33,14 +33,20 @@
     <!-- React + ReactDOM via CDN -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-    <!-- Babel pour écrire du JSX directement (pratique pour GH Pages). En prod avec bundler, on enlève. -->
+    <!-- Babel pour écrire du JSX directement -->
     <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
     <!-- MapLibre via CDN -->
     <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
 
-    <script type="text/babel">
-      // Fallback random id si crypto.randomUUID indisponible
-      const rndId = () => (crypto?.randomUUID ? crypto.randomUUID() : 'id-' + Math.random().toString(36).slice(2));
+    <!-- IMPORTANT: on précise les presets pour que Babel gère le JS moderne -->
+    <script type="text/babel" data-presets="env,react">
+      // Générateur d'ID compatible (sans optional chaining)
+      function rndId() {
+        if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+          return window.crypto.randomUUID();
+        }
+        return 'id-' + Math.random().toString(36).slice(2);
+      }
 
       const STORAGE_KEY = 'brest-guide-points-v1';
 
@@ -95,7 +101,7 @@
             const {longitude:lng, latitude:lat, accuracy:acc} = pos.coords;
             setUserPos({lng,lat,acc: acc || 30});
             drawAccuracy();
-          }, err=>{ console.warn('Geolocation error:', err?.message); }, { enableHighAccuracy:true, maximumAge:5000, timeout:15000 });
+          }, err=>{ console.warn('Geolocation error:', err && err.message); }, { enableHighAccuracy:true, maximumAge:5000, timeout:15000 });
           return ()=> navigator.geolocation.clearWatch && navigator.geolocation.clearWatch(id);
         },[]);
 
@@ -122,10 +128,12 @@
         // Cercle de précision + point utilisateur
         function drawAccuracy(){
           const map = mapRef.current;
-          if(!map || !map.isStyleLoaded() || !userPos) return;
+          if(!map || !map.isStyleLoaded || !userPos) return;
+
           const center = [userPos.lng, userPos.lat];
 
           // point
+          if(!map.getSource || !map.addSource) return; // sécurité si style pas prêt
           if(!map.getSource('user-point-src')){
             map.addSource('user-point-src', { type:'geojson', data:{ type:'FeatureCollection', features:[{ type:'Feature', geometry:{ type:'Point', coordinates:center } }] } });
             map.addLayer({ id:'user-point', type:'circle', source:'user-point-src', paint:{ 'circle-radius':6, 'circle-color':'#007AFF', 'circle-stroke-width':2, 'circle-stroke-color':'#fff' }});
@@ -276,7 +284,7 @@
                       }}>Charger des exemples</button>
                     </div>
                   </div>
-                  <hr style="margin:12px 0" />
+                  <hr style={{ margin: "12px 0" }} />
                   <div className="muted" style={{fontSize:12,display:'grid',gap:4}}>
                     <div>• Active « Ajout » puis fais un <b>appui long</b> sur la carte pour créer un lieu.</div>
                     <div>• Les marqueurs sont <b>déplaçables</b>. Tout est sauvegardé en local (localStorage).</div>
