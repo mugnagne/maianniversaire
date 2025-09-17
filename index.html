@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Brest Pocket Guide</title>
 
-  <!-- MapLibre GL -->
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" />
   <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
 
@@ -24,8 +23,7 @@
     .list-item{ border:1px solid #eee; border-radius:16px; padding:12px; display:grid; gap:6px }
     .muted{ color:#666 }
 
-    .mk{ width:22px; height:22px; border-radius:999px; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.25) }
-
+    .mk{ width:22px; height:22px; border-radius:999px; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.25); cursor:pointer }
     .route-badge{ position:fixed; left:50%; transform:translateX(-50%); bottom:78px; z-index:5 }
   </style>
 </head>
@@ -83,7 +81,7 @@
       </div>
       <hr style="margin:12px 0" />
       <div class="muted" style="font-size:12px; display:grid; gap:4px">
-        <div>• Active « Ajout » puis fais un <b>appui long</b> sur la carte pour créer un lieu.</div>
+        <div>• Active « Ajout » puis fais un <b>appui long</b> sur la carte pour créer un lieu (mobile) ou <b>clic sans bouger</b> (desktop).</div>
         <div>• Les marqueurs sont <b>déplaçables</b>. Tout est sauvegardé en local (localStorage).</div>
         <div>• Bouton <b>Moi</b> pour te recentrer. Utilise <b>Itinéraire</b> dans le popup d’un lieu.</div>
       </div>
@@ -96,17 +94,16 @@
   const ROUTE_SRC = 'route-src';
   const ROUTE_LINE = 'route-line';
 
-  // ----- Map (vector style net) -----
   const map = new maplibregl.Map({
     container: 'map',
-    style: 'https://tiles.openfreemap.org/styles/liberty', // vector, no key
+    style: 'https://tiles.openfreemap.org/styles/liberty',
     center: [-4.4861, 48.3904],
     zoom: 12,
     attributionControl: true
   });
   map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'bottom-right');
 
-  // Geolocate (1 dot + cercle)
+  // Geolocate
   const geo = new maplibregl.GeolocateControl({
     positionOptions: { enableHighAccuracy: true },
     trackUserLocation: true,
@@ -115,25 +112,18 @@
   });
   map.addControl(geo, 'bottom-right');
 
-  // dernière position connue via le contrôle (évite 2e prompt)
-  let currentPos = null; // {lng, lat, acc}
-  geo.on('geolocate', (e) => {
-    currentPos = { lng: e.coords.longitude, lat: e.coords.latitude, acc: e.coords.accuracy || 30 };
-  });
+  let currentPos = null;
+  geo.on('geolocate', (e) => { currentPos = { lng: e.coords.longitude, lat: e.coords.latitude }; });
 
-  // ----- State -----
+  // ---------- State ----------
   let points = loadPoints();
   let addingMode = false;
   let markers = {}; // id -> Marker
 
-  function loadPoints(){
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(e){ return []; }
-  }
-  function savePoints(){
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(points));
-  }
+  function loadPoints(){ try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(e){ return []; } }
+  function savePoints(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(points)); }
 
-  // ----- UI refs (déclarés une seule fois) -----
+  // ---------- UI refs ----------
   const btnAdd        = document.getElementById('btn-add');
   const btnList       = document.getElementById('btn-list');
   const btnAddCenter  = document.getElementById('btn-add-center');
@@ -153,7 +143,7 @@
   const routeText     = document.getElementById('route-text');
   const btnClearRoute = document.getElementById('btn-clear-route');
 
-  // ----- Helpers -----
+  // ---------- Helpers ----------
   function rndId(){ return (crypto.randomUUID ? crypto.randomUUID() : 'id-'+Math.random().toString(36).slice(2)); }
   function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 
@@ -165,6 +155,10 @@
       const el = document.createElement('div');
       el.className = 'mk';
       el.style.background = p.color || '#FF3366';
+      // IMPORTANT: empêcher la carte d'interpréter le clic comme un pan
+      el.addEventListener('mousedown', e => e.stopPropagation());
+      el.addEventListener('touchstart', e => e.stopPropagation(), {passive:true});
+      el.addEventListener('click', e => { e.stopPropagation(); openPopupFor(p); });
 
       const marker = new maplibregl.Marker({ element: el, draggable: true })
         .setLngLat([p.lng, p.lat])
@@ -175,7 +169,6 @@
         updatePoint(p.id, { lng: c.lng, lat: c.lat });
       });
 
-      marker.getElement().addEventListener('click', () => openPopupFor(p));
       markers[p.id] = marker;
     });
 
@@ -198,7 +191,6 @@
         </div>
       </div>
     `;
-
     const popup = new maplibregl.Popup({ closeOnClick: true, maxWidth: '280px' })
       .setLngLat([p.lng, p.lat])
       .setHTML(html)
@@ -270,13 +262,13 @@
     });
   }
 
-  // ----- Route (OSRM) -----
+  // ---------- Route (OSRM) ----------
   function clearRoute(){
     if (map.getLayer(ROUTE_LINE)) map.removeLayer(ROUTE_LINE);
     if (map.getSource(ROUTE_SRC)) map.removeSource(ROUTE_SRC);
     routeBadge.style.display = 'none';
   }
-  btnClearRoute.onclick = clearRoute;
+  document.getElementById('btn-clear-route').onclick = clearRoute;
 
   function fitToCoords(coords){
     let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
@@ -285,10 +277,7 @@
   }
 
   function routeToPoint(p){
-    // utilise la dernière position connue (via GeolocateControl)
     if (currentPos) return fetchRoute([currentPos.lng, currentPos.lat], [p.lng, p.lat]);
-
-    // sinon, on demande une fois via le contrôle
     try { geo.trigger(); } catch(e){}
     setTimeout(() => {
       if (currentPos) fetchRoute([currentPos.lng, currentPos.lat], [p.lng, p.lat]);
@@ -311,20 +300,50 @@
         map.addSource(ROUTE_SRC, { type:'geojson', data:{ type:'Feature', geometry:{ type:'LineString', coordinates: coords } } });
         map.addLayer({ id:ROUTE_LINE, type:'line', source:ROUTE_SRC, paint:{ 'line-color':'#007AFF', 'line-width':4, 'line-opacity':0.9 } });
 
-        const distKm = Math.round(route.distance/10)/100; // m->km
+        const distKm = Math.round(route.distance/10)/100;
         const durMin = Math.round(route.duration/60);
         routeText.textContent = `➜ ${distKm} km • ~${durMin} min`;
         routeBadge.style.display = 'block';
         fitToCoords(coords);
       })
-      .catch(err => {
-        console.warn('OSRM', err);
-        alert("Impossible d'obtenir l’itinéraire (réseau/API).");
-      });
+      .catch(err => { console.warn('OSRM', err); alert("Impossible d'obtenir l’itinéraire (réseau/API)."); });
   }
 
-  // ----- Events / UI -----
-  btnMeEl.onclick = () => { try{ geo.trigger(); }catch(e){} };
+  // ---------- Click vs Drag: ajout desktop ----------
+  let isMouseDown = false;
+  let startPt = null;
+  let moved = false;
+
+  map.on('mousedown', (e) => {
+    if (!addingMode) return;
+    if (e.originalEvent.button !== 0) return; // bouton gauche uniquement
+    isMouseDown = true;
+    moved = false;
+    startPt = e.point;
+  });
+  map.on('mousemove', (e) => {
+    if (!isMouseDown) return;
+    const dx = e.point.x - startPt.x;
+    const dy = e.point.y - startPt.y;
+    if ((dx*dx + dy*dy) > 25) moved = true; // >5px
+  });
+  map.on('mouseup', (e) => {
+    if (!isMouseDown) return;
+    isMouseDown = false;
+    if (!moved && addingMode) addPoint(e.lngLat.lng, e.lngLat.lat);
+  });
+  map.on('dragstart', () => { moved = true; }); // si la carte commence à bouger, on n’ajoute pas
+
+  // Long-press (mobile)
+  let pressTimer=null;
+  map.on('touchstart', e => {
+    if(!addingMode) return;
+    pressTimer = setTimeout(() => addPoint(e.lngLat.lng, e.lngLat.lat), 450);
+  });
+  map.on('touchend', () => { if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
+
+  // ---------- Buttons / UI ----------
+  document.getElementById('btn-me').onclick = () => { try{ geo.trigger(); }catch(e){} };
 
   btnAdd.onclick = () => {
     addingMode = !addingMode;
@@ -374,17 +393,6 @@
     a.href = url; a.download = 'brest-guide-points.json'; a.click();
     URL.revokeObjectURL(url);
   };
-
-  // Long-press (mobile) pour ajouter
-  let pressTimer=null;
-  map.on('touchstart', e => {
-    if(!addingMode) return;
-    pressTimer = setTimeout(() => addPoint(e.lngLat.lng, e.lngLat.lat), 450);
-  });
-  map.on('touchend', () => { if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
-
-  // Click (desktop) en mode ajout
-  map.on('click', e => { if(addingMode) addPoint(e.lngLat.lng, e.lngLat.lat); });
 
   // Init
   map.on('load', () => { renderMarkers(); try{ geo.trigger(); }catch(e){} });
