@@ -12,7 +12,7 @@
 
       .topbar { position: fixed; left: 12px; right: 12px; top: 10px; display: flex; gap: 8px; justify-content: space-between; z-index: 5; }
       .card { background: #fff9; backdrop-filter: blur(6px); padding: 8px 12px; border-radius: 16px; box-shadow: 0 6px 16px rgba(0,0,0,.12); font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
-      .fabs { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; display: flex; gap: 8px; z-index: 5; }
+      .fabs { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; display: flex; gap: 8px; z-index: 5; flex-wrap: wrap; justify-content: center; }
       .fab { background: #fff9; border: 1px solid #eee; padding: 10px 14px; border-radius: 16px; box-shadow: 0 6px 16px rgba(0,0,0,.15); font-weight: 600; }
 
       .drawer { position: fixed; left: 0; right: 0; bottom: 0; background: #fff; border-top-left-radius: 24px; border-top-right-radius: 24px; box-shadow: 0 -8px 24px rgba(0,0,0,.2); max-height: 60vh; overflow: auto; padding: 16px; z-index: 6; }
@@ -20,7 +20,13 @@
       .muted { color: #666; }
 
       .mk { width: 22px; height: 22px; border-radius: 999px; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
-      .me-dot { width: 16px; height: 16px; border-radius: 999px; background: #0a84ff; border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+
+      /* Marqueur utilisateur (dot + flèche orientée) */
+      .me-wrap { width: 26px; height: 26px; position: relative; transform-origin: 50% 50%; }
+      .me-dot  { position:absolute; left:5px; top:5px; width:16px; height:16px; border-radius:999px; background:#0a84ff; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.25); }
+      .me-arrow{ position:absolute; left:50%; top:-2px; margin-left:-4px; width:0; height:0;
+                 border-left:4px solid transparent; border-right:4px solid transparent; border-bottom:8px solid #0a84ff;
+                 filter: drop-shadow(0 1px 1px rgba(0,0,0,.25)); }
     </style>
   </head>
   <body>
@@ -37,7 +43,7 @@
         return 'id-' + Math.random().toString(36).slice(2);
       }
 
-      // Style OSM raster (routes + noms, sans clé)
+      /* Style OSM raster (routes + noms, sans clé) */
       var OSM_RASTER_STYLE = {
         "version": 8,
         "sources": { "osm": { "type": "raster", "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], "tileSize": 256, "attribution": "© OpenStreetMap contributors" } },
@@ -49,54 +55,115 @@
       function App(){
         const mapRef = React.useRef(null);
         const containerRef = React.useRef(null);
-        const userMarkerRef = React.useRef(null); // fallback HTML marker
+
+        const userWrapRef   = React.useRef(null);   // element qui tourne (flèche + dot)
+        const userMarkerRef = React.useRef(null);   // maplibre marker qui porte userWrapRef
+
         const [points,setPoints] = React.useState(function(){ try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; } catch(e){ return []; } });
         const [adding,setAdding] = React.useState(false);
         const [showList,setShowList] = React.useState(false);
         const [showImport,setShowImport] = React.useState(false);
         const [userPos,setUserPos] = React.useState(null); // {lng,lat,acc}
+        const [heading,setHeading] = React.useState(null); // degrés 0..360
 
         React.useEffect(function(){ localStorage.setItem(STORAGE_KEY, JSON.stringify(points)); }, [points]);
 
+        /* Init carte + contrôles */
         React.useEffect(function(){
           if(mapRef.current||!containerRef.current) return;
           var map = new maplibregl.Map({ container: containerRef.current, style: OSM_RASTER_STYLE, center: [-4.4861,48.3904], zoom: 12, attributionControl: true });
           mapRef.current = map;
 
-          // Contrôles: navigation + géoloc natif (dot + cercle)
           map.addControl(new maplibregl.NavigationControl({showCompass:false}), 'bottom-right');
           var geo = new maplibregl.GeolocateControl({
             positionOptions: { enableHighAccuracy: true },
-            trackUserLocation: true,        // suit en live
-            showUserLocation: true,         // point bleu
-            showAccuracyCircle: true        // cercle bleu
+            trackUserLocation: true,
+            showUserLocation: true,
+            showAccuracyCircle: true
           });
           map.addControl(geo, 'bottom-right');
 
           map.on('load', function(){
             renderMarkers();
-            // Trigger la geoloc une fois au chargement pour afficher le dot immédiatement
             try { geo.trigger(); } catch(e) {}
           });
 
-          // Long-press pour ajouter (mobile)
+          // Long-press pour ajouter
           var t=null;
-          map.on('touchstart', function(e){ if(!adding) return; t = setTimeout(function(){ addAt(e.lngLat.lng, e.lngLat.lat); }, 450); });
-          map.on('touchend', function(){ if(t){ clearTimeout(t); t=null; } });
+          map.on('touchstart', function(e){ if(!adding) return; t=setTimeout(function(){ addAt(e.lngLat.lng, e.lngLat.lat); }, 450); });
+          map.on('touchend',   function(){ if(t){ clearTimeout(t); t=null; } });
         }, [adding]);
 
-        // Watch manuel (garde la compat avec notre bouton "Moi" et le fallback)
+        /* GPS: suivi + maj du fallback (position) et de la rotation si heading GPS dispo */
         React.useEffect(function(){
           if(!('geolocation' in navigator)) return;
           var id = navigator.geolocation.watchPosition(function(pos){
             var lng = pos.coords.longitude, lat = pos.coords.latitude, acc = pos.coords.accuracy || 30;
             setUserPos({ lng: lng, lat: lat, acc: acc });
-            drawUserFallback();
+            if (typeof pos.coords.heading === 'number' && !isNaN(pos.coords.heading)) {
+              setHeading(pos.coords.heading); // 0 = Nord
+            }
+            updateUserMarker(lng, lat);      // place/màj le marqueur
           }, function(err){ console.warn('Geolocation error:', err && err.message); }, { enableHighAccuracy:true, maximumAge:5000, timeout:15000 });
           return function(){ if(navigator.geolocation.clearWatch) navigator.geolocation.clearWatch(id); };
         }, []);
 
         React.useEffect(function(){ renderMarkers(); }, [points]);
+
+        /* Boussole: DeviceOrientation (meilleure à l'arrêt). Bouton "🧭 Boussole" pour iOS. */
+        function enableCompass(){
+          if (window.DeviceOrientationEvent && typeof window.DeviceOrientationEvent.requestPermission === 'function') {
+            // iOS nécessite une interaction utilisateur + permission
+            window.DeviceOrientationEvent.requestPermission().then(function(resp){
+              if (resp === 'granted') listenOrientation();
+              else alert('Permission boussole refusée');
+            }).catch(function(){ alert('Boussole non disponible'); });
+          } else if (window.DeviceOrientationEvent) {
+            listenOrientation();
+          } else {
+            alert('Boussole non disponible sur ce navigateur');
+          }
+        }
+
+        function listenOrientation(){
+          window.addEventListener('deviceorientation', function(e){
+            // iOS expose webkitCompassHeading (0..360) / Android: alpha (0..360), 0 = Est -> on convertit en cap compas
+            var h = null;
+            if (typeof e.webkitCompassHeading === 'number') {
+              h = e.webkitCompassHeading; // déjà "vers le Nord"
+            } else if (typeof e.alpha === 'number') {
+              // convertir alpha (0=Est, 90=Nord) en cap "Nord=0"
+              h = (360 - e.alpha + 90) % 360;
+              if (h < 0) h += 360;
+            }
+            if (h !== null) {
+              setHeading(h);
+              rotateUserMarker(h);
+            }
+          }, true);
+        }
+
+        function rotateUserMarker(deg){
+          if (userWrapRef.current) userWrapRef.current.style.transform = 'rotate(' + deg + 'deg)';
+        }
+
+        function updateUserMarker(lng, lat){
+          var map = mapRef.current; if(!map) return;
+
+          if (!userWrapRef.current) {
+            var wrap = document.createElement('div'); wrap.className = 'me-wrap';
+            var arrow = document.createElement('div'); arrow.className = 'me-arrow';
+            var dot   = document.createElement('div'); dot.className   = 'me-dot';
+            wrap.appendChild(arrow); wrap.appendChild(dot);
+            userWrapRef.current = wrap;
+          }
+          if (!userMarkerRef.current) {
+            userMarkerRef.current = new maplibregl.Marker({ element: userWrapRef.current }).setLngLat([lng, lat]).addTo(mapRef.current);
+          } else {
+            userMarkerRef.current.setLngLat([lng, lat]);
+          }
+          if (heading !== null) rotateUserMarker(heading);
+        }
 
         function renderMarkers(){
           var map = mapRef.current; if(!map) return;
@@ -106,16 +173,6 @@
             var m = new maplibregl.Marker({element: el, draggable: true}).setLngLat([p.lng, p.lat]).addTo(map);
             m.on('dragend', function(){ var c = m.getLngLat(); setPoints(function(prev){ return prev.map(function(x){ return x.id===p.id ? Object.assign({}, x, { lng:c.lng, lat:c.lat }) : x; }); }); });
           });
-        }
-
-        // Fallback: un dot HTML bleu pour l'utilisateur (au-dessus de tout)
-        function drawUserFallback(){
-          var map = mapRef.current; if(!map || !userPos) return;
-          var center = [userPos.lng, userPos.lat];
-          if(!userMarkerRef.current){
-            var el = document.createElement('div'); el.className = 'me-dot';
-            userMarkerRef.current = new maplibregl.Marker({ element: el }).setLngLat(center).addTo(map);
-          } else { userMarkerRef.current.setLngLat(center); }
         }
 
         function addAt(lng,lat){
@@ -161,6 +218,7 @@
             <div className="fabs">
               <button className="fab" onClick={addAtCenter}>Ajouter au centre</button>
               <button className="fab" onClick={centerOnMe}>Moi</button>
+              <button className="fab" onClick={enableCompass}>🧭 Boussole</button>
               <button className="fab" onClick={function(){ setShowImport(true); }}>⋯</button>
             </div>
 
@@ -234,7 +292,7 @@
                   <div className="muted" style={{fontSize:12,display:'grid',gap:4}}>
                     <div>• Active « Ajout » puis fais un <b>appui long</b> sur la carte pour créer un lieu.</div>
                     <div>• Les marqueurs sont <b>déplaçables</b>. Tout est sauvegardé en local (localStorage).</div>
-                    <div>• Bouton <b>Moi</b> pour te recentrer.</div>
+                    <div>• Bouton <b>Moi</b> pour te recentrer. Active la <b>🧭 Boussole</b> pour voir la flèche de direction.</div>
                   </div>
                 </div>
               </div>
