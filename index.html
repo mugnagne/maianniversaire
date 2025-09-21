@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Guide de Poche</title>
 
-  <!-- Favicon citrouille -->
   <link rel="icon" href='data:image/svg+xml;utf8,
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
       <rect width="64" height="64" rx="12" ry="12" fill="%230B0B0F"/>
@@ -21,10 +20,8 @@
       </g>
     </svg>' />
 
-  <!-- Google Fonts: Amarante -->
   <link href="https://fonts.googleapis.com/css2?family=Amarante&display=swap" rel="stylesheet">
 
-  <!-- MapLibre GL -->
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.css" />
   <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
 
@@ -44,7 +41,6 @@
     html,body{height:100%;margin:0;background:#0B0B0F;color:var(--text);font-family:"Amarante",system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Helvetica,Arial}
     #map{position:fixed;inset:0}
 
-    /* Force Amarante partout */
     html,body,#map,button,input,select,textarea,
     .card,.fab,.drawer,.list-item,.lbl,
     .maplibregl-ctrl,.maplibregl-ctrl button,.maplibregl-ctrl-group button,
@@ -62,15 +58,11 @@
     .list-item{border:1px solid var(--border);border-radius:16px;padding:12px;display:grid;gap:6px;background:var(--bg-strong)}
     .muted{color:var(--muted)}
 
-    /* Boutons sombres par défaut (y compris popups / drawer) */
     button{background:var(--btn-dark);color:var(--btn-dark-text);border:1px solid var(--btn-dark-border);border-radius:12px;cursor:pointer}
     .card button,.fab button{background:var(--btn-dark)} /* au cas où */
 
-    /* Lanterne (Noms + Ajout) */
-   /* par défaut: rien de spécial (hérite du style sombre .card) */
 .lantern {}
 
-/* actif uniquement */
 .lantern.on{
   background: var(--lantern) !important;
   color:#111 !important;
@@ -82,7 +74,6 @@
 }
 
 
-    /* Markers emoji */
     .mk{width:26px;height:26px;border-radius:999px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;background:#1e1f26}
     .mk-emoji{font-size:18px;line-height:1}
 
@@ -93,7 +84,6 @@
     input[type="color"]{background:transparent;border:none}
     a{color:var(--accent)}
 
-    /* Popups : fond blanc pour la lisibilité, MAIS boutons sombres */
     .maplibregl-popup-content{background:#fff;color:#111}
     .maplibregl-popup-tip{border-top-color:#fff !important}
     .maplibregl-popup-content button{background:var(--btn-dark);color:var(--btn-dark-text);border:1px solid var(--btn-dark-border)}
@@ -108,7 +98,6 @@
     <div class="card">🎃 Guide de Poche</div>
     <div style="display:flex; gap:8px">
       <button id="btn-list" class="card" aria-label="Ouvrir la liste">Lieux (0)</button>
-      <!-- lantern buttons -->
       <button id="btn-labels" class="card lantern" aria-label="Afficher/masquer les noms">Noms</button>
       <button id="btn-style" class="card" aria-label="Changer de style">Style</button>
       <button id="btn-add" class="card lantern" aria-label="Mode ajout">Ajout</button>
@@ -128,7 +117,6 @@
     <button class="fab" id="btn-import">⋯</button>
   </div>
 
-  <!-- Drawer -->
   <div class="drawer" id="drawer" style="display:none">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
       <h3 style="margin:0">Mes lieux</h3>
@@ -141,7 +129,6 @@
     <ul id="list" style="list-style:none; padding:0; margin:0; display:grid; gap:8px"></ul>
   </div>
 
-  <!-- Modal Import -->
   <div id="modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.5); backdrop-filter: blur(3px); z-index:7; align-items:flex-end; justify-content:center; padding:16px">
     <div style="background:#111218; border-radius:24px; box-shadow:0 12px 32px rgba(0,0,0,.6); padding:16px; width:100%; max-width:560px; border:1px solid var(--border)">
       <h3 style="margin:0 0 8px 0">Importer JSON / Astuces</h3>
@@ -171,7 +158,6 @@
   const ROUTE_SRC = 'route-src';
   const ROUTE_LINE = 'route-line';
 
-  // Styles
   const STYLE_RASTER_DARK = {
     version: 8,
     sources: {
@@ -194,7 +180,6 @@
   let currentStyle = 'dark';
   let lastRouteGeoJson = null;
 
-  // Emoji utils — accepte n'importe quel emoji, garde le 1er grapheme
   const getFirstGrapheme = (str) => {
     if (!str) return '';
     try {
@@ -212,7 +197,6 @@
     return g || '🎃';
   };
 
-  // Lieux natifs (exemple minimal – les tiens restent tels quels)
   const NATIVE_PLACES = [
    { id:'nat-minou', title:'Phare du Petit Minou', lng:-4.6189, lat:48.3378, notes:'Spot Photo Iconique', icon:'📸', native:true },
 { id:'nat-bargay', title:'Happy Café', lng:-4.5339124, lat:48.3983125, notes:'Bar (pas si) queer', icon:'🏳️‍🌈', native:true },
@@ -249,7 +233,6 @@
 
   ];
 
-  // Map
   const map = new maplibregl.Map({
     container: 'map',
     style: STYLE_RASTER_DARK,
@@ -270,7 +253,6 @@
   let currentPos = null;
   geo.on('geolocate', (e) => { currentPos = { lng: e.coords.longitude, lat: e.coords.latitude }; });
 
-  // State
   let points = loadPoints();
   let addingMode = false;
   let showLabels = false;
@@ -338,7 +320,6 @@
     document.getElementById('btn-list').innerText = `Lieux (${ALL.length})`;
   }
 
-  // Popup
   function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
   function rndId(){ return (crypto.randomUUID ? crypto.randomUUID() : 'id-'+Math.random().toString(36).slice(2)); }
 
@@ -397,7 +378,6 @@
     updatePoint(id, { title:t, notes:n, icon:ic });
   }
 
-  // Liste
   function updateList(){
     const listEl = document.getElementById('list');
     listEl.innerHTML = '';
@@ -439,7 +419,6 @@
     });
   }
 
-  // Route (OSRM walking)
   function clearRoute(){
     if (map.getLayer(ROUTE_LINE)) map.removeLayer(ROUTE_LINE);
     if (map.getSource(ROUTE_SRC)) map.removeSource(ROUTE_SRC);
@@ -494,7 +473,6 @@
       .catch(err => { console.warn('OSRM', err); alert("Impossible d'obtenir l’itinéraire (réseau/API)."); });
   }
 
-  // Click vs Drag (desktop)
   let isMouseDown=false, startPt=null, moved=false;
   map.on('mousedown', (e) => {
     if (!addingMode) return;
@@ -512,12 +490,10 @@
   });
   map.on('dragstart', () => { moved = true; });
 
-  // Long-press (mobile)
   let pressTimer=null;
   map.on('touchstart', e => { if(!addingMode) return; pressTimer=setTimeout(()=>addPoint(e.lngLat.lng,e.lngLat.lat),450); });
   map.on('touchend', () => { if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
 
-  // Buttons
   document.getElementById('btn-me').onclick = () => { try{ geo.trigger(); }catch(e){} };
 
   const btnAdd = document.getElementById('btn-add');
@@ -601,7 +577,6 @@
     URL.revokeObjectURL(url);
   };
 
-  // Toggle style
   document.getElementById('btn-style').onclick = () => {
     if (currentStyle === 'dark') {
       currentStyle = 'liberty';
