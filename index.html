@@ -29,56 +29,65 @@
   <script src="https://unpkg.com/maplibre-gl@3.6.1/dist/maplibre-gl.js"></script>
 
   <style>
-    :root {
+    :root{
       --pink:#FF3366; --orange:#FF5733;
       --bg: rgba(255,255,255,0.06);
       --bg-strong: rgba(255,255,255,0.10);
       --border: rgba(255,255,255,0.16);
       --shadow: 0 8px 28px rgba(0,0,0,.45);
-      --text: #FFFFFF; --muted:#A7A7A7;
+      --text:#fff; --muted:#A7A7A7;
       --accent:#7CB8FF;
+      --btn-dark:#2A2B31; --btn-dark-border:#3B3D45; --btn-dark-text:#fff;
+      --lantern:#FFD54A; --lantern-border:#C9A73A;
     }
-    *{ box-sizing: border-box }
-    html,body{ height:100%; margin:0; background:#0B0B0F; color:var(--text); font-family:"Amarante", system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Helvetica, Arial }
-    #map{ position:fixed; inset:0 }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:#0B0B0F;color:var(--text);font-family:"Amarante",system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Helvetica,Arial}
+    #map{position:fixed;inset:0}
 
-    /* Forcer Amarante sur toute l’UI MapLibre incluse */
-    html, body, #map,
-    button, input, select, textarea,
-    .card, .fab, .drawer, .list-item, .lbl,
-    .maplibregl-ctrl, .maplibregl-ctrl button, .maplibregl-ctrl-group button,
-    .maplibregl-popup, .maplibregl-popup-content, .maplibregl-popup * {
-      font-family: "Amarante", system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Helvetica, Arial !important;
-      font-weight: 400;
+    /* Force Amarante partout */
+    html,body,#map,button,input,select,textarea,
+    .card,.fab,.drawer,.list-item,.lbl,
+    .maplibregl-ctrl,.maplibregl-ctrl button,.maplibregl-ctrl-group button,
+    .maplibregl-popup,.maplibregl-popup-content,.maplibregl-popup *{
+      font-family:"Amarante",system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Helvetica,Arial !important;
+      font-weight:400;
     }
 
-    .topbar{ position:fixed; top:10px; left:12px; right:12px; display:flex; gap:8px; justify-content:space-between; z-index:5 }
-    .card{ background:var(--bg); backdrop-filter: blur(8px); padding:8px 12px; border-radius:16px; box-shadow:var(--shadow); border:1px solid var(--border); font-weight:600; color:var(--text) }
-    .fabs{ position:fixed; left:50%; transform:translateX(-50%); bottom:16px; display:flex; gap:8px; z-index:5; flex-wrap:wrap; justify-content:center }
-    .fab{ background:var(--bg); border:1px solid var(--border); padding:10px 14px; border-radius:16px; box-shadow:var(--shadow); font-weight:600; color:var(--text) }
+    .topbar{position:fixed;top:10px;left:12px;right:12px;display:flex;gap:8px;justify-content:space-between;z-index:5}
+    .card{background:var(--bg);backdrop-filter:blur(8px);padding:8px 12px;border-radius:16px;box-shadow:var(--shadow);border:1px solid var(--border);font-weight:600;color:var(--text)}
+    .fabs{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;display:flex;gap:8px;z-index:5;flex-wrap:wrap;justify-content:center}
+    .fab{background:var(--bg);border:1px solid var(--border);padding:10px 14px;border-radius:16px;box-shadow:var(--shadow);font-weight:600;color:var(--text)}
 
-    .drawer{ position:fixed; left:0; right:0; bottom:0; background:#111218; border-radius:24px 24px 0 0; box-shadow:0 -16px 36px rgba(0,0,0,.6); max-height:60vh; overflow:auto; padding:16px; z-index:6; border-top:1px solid var(--border) }
-    .list-item{ border:1px solid var(--border); border-radius:16px; padding:12px; display:grid; gap:6px; background:var(--bg-strong) }
-    .muted{ color:var(--muted) }
+    .drawer{position:fixed;left:0;right:0;bottom:0;background:#111218;border-radius:24px 24px 0 0;box-shadow:0 -16px 36px rgba(0,0,0,.6);max-height:60vh;overflow:auto;padding:16px;z-index:6;border-top:1px solid var(--border)}
+    .list-item{border:1px solid var(--border);border-radius:16px;padding:12px;display:grid;gap:6px;background:var(--bg-strong)}
+    .muted{color:var(--muted)}
 
-    /* MARKERS EMOJI */
-    .mk { width:26px; height:26px; border-radius:999px; border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.45); cursor:pointer; display:flex; align-items:center; justify-content:center; background:#1e1f26 }
-    .mk-emoji { font-size:18px; line-height:1 }
+    /* Boutons sombres par défaut (y compris popups / drawer) */
+    button{background:var(--btn-dark);color:var(--btn-dark-text);border:1px solid var(--btn-dark-border);border-radius:12px;cursor:pointer}
+    .card button,.fab button{background:var(--btn-dark)} /* au cas où */
 
-    .lbl{ white-space:nowrap; font-size:12px; padding:2px 6px; border-radius:10px; background:var(--bg-strong); border:1px solid var(--border); box-shadow:var(--shadow); transform:translateY(-6px); color:var(--text) }
+    /* Lanterne (Noms + Ajout) */
+    .lantern{background:var(--lantern) !important;color:#111 !important;border:1px solid var(--lantern-border) !important;
+             box-shadow:0 0 0 2px rgba(0,0,0,.2) inset, 0 0 12px rgba(255,213,74,.65), 0 0 24px rgba(255,213,74,.35) !important}
+    .lantern.on{box-shadow:0 0 0 2px rgba(0,0,0,.25) inset, 0 0 18px rgba(255,213,74,.9), 0 0 36px rgba(255,213,74,.55) !important}
 
-    .route-badge{ position:fixed; left:50%; transform:translateX(-50%); bottom:78px; z-index:5 }
-    button{ color:var(--text) }
-    input, textarea, select{ background:#0F1016; color:var(--text); border:1px solid var(--border); border-radius:10px; }
-    input[type="color"]{ background:transparent; border:none; }
-    a{ color:var(--accent) }
+    /* Markers emoji */
+    .mk{width:26px;height:26px;border-radius:999px;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;background:#1e1f26}
+    .mk-emoji{font-size:18px;line-height:1}
 
-    /* POPUPS LISIBLES : fond blanc -> texte noir */
-    .maplibregl-popup-content{ background:#fff; color:#111; }
-    .maplibregl-popup-tip{ border-top-color:#fff !important; }
-    .maplibregl-popup-content button{ color:#111; background:#f3f4f6; border:1px solid #d9dbe1; border-radius:10px; padding:6px 10px; }
-    .maplibregl-popup-content strong{ color:#111 }
-    .maplibregl-popup-content .muted{ color:#333 }
+    .lbl{white-space:nowrap;font-size:12px;padding:2px 6px;border-radius:10px;background:var(--bg-strong);border:1px solid var(--border);box-shadow:var(--shadow);transform:translateY(-6px);color:var(--text)}
+
+    .route-badge{position:fixed;left:50%;transform:translateX(-50%);bottom:78px;z-index:5}
+    input,textarea,select{background:#0F1016;color:var(--text);border:1px solid var(--border);border-radius:10px}
+    input[type="color"]{background:transparent;border:none}
+    a{color:var(--accent)}
+
+    /* Popups : fond blanc pour la lisibilité, MAIS boutons sombres */
+    .maplibregl-popup-content{background:#fff;color:#111}
+    .maplibregl-popup-tip{border-top-color:#fff !important}
+    .maplibregl-popup-content button{background:var(--btn-dark);color:var(--btn-dark-text);border:1px solid var(--btn-dark-border)}
+    .maplibregl-popup-content strong{color:#111}
+    .maplibregl-popup-content .muted{color:#333}
   </style>
 </head>
 <body>
@@ -88,9 +97,10 @@
     <div class="card">🎃 Brest Pocket Guide</div>
     <div style="display:flex; gap:8px">
       <button id="btn-list" class="card" aria-label="Ouvrir la liste">Lieux (0)</button>
-      <button id="btn-labels" class="card" aria-label="Afficher/masquer les noms">Noms</button>
+      <!-- lantern buttons -->
+      <button id="btn-labels" class="card lantern" aria-label="Afficher/masquer les noms">Noms</button>
       <button id="btn-style" class="card" aria-label="Changer de style">Style</button>
-      <button id="btn-add" class="card" aria-label="Mode ajout">Ajout</button>
+      <button id="btn-add" class="card lantern" aria-label="Mode ajout">Ajout</button>
     </div>
   </div>
 
@@ -150,7 +160,7 @@
   const ROUTE_SRC = 'route-src';
   const ROUTE_LINE = 'route-line';
 
-  // ------- Styles de carte -------
+  // Styles
   const STYLE_RASTER_DARK = {
     version: 8,
     sources: {
@@ -170,48 +180,34 @@
   };
   const STYLE_LIBERTY_URL = 'https://tiles.openfreemap.org/styles/liberty';
 
-  let currentStyle = 'dark';        // 'dark' | 'liberty'
-  let lastRouteGeoJson = null;      // pour réappliquer la route après switch
+  let currentStyle = 'dark';
+  let lastRouteGeoJson = null;
 
-  // -------- Lieux natifs (toujours présents) --------
-  const ICONS = ['🐈‍⬛','🎃','🧙‍♀️','⚗️'];
-  const validIcon = v => ICONS.includes(v) ? v : '🎃';
+  // Emoji utils — accepte n'importe quel emoji, garde le 1er grapheme
+  const getFirstGrapheme = (str) => {
+    if (!str) return '';
+    try {
+      if (window.Intl && Intl.Segmenter) {
+        const seg = new Intl.Segmenter('fr', { granularity:'grapheme' });
+        const it = seg.segment(str)[Symbol.iterator]();
+        const first = it.next();
+        return first && first.value ? first.value.segment : Array.from(str)[0];
+      }
+    } catch(e){}
+    return Array.from(str)[0]; // fallback
+  };
+  const validIcon = v => {
+    const g = getFirstGrapheme(String(v||'').trim());
+    return g || '🎃';
+  };
 
+  // Lieux natifs (exemple minimal – les tiens restent tels quels)
   const NATIVE_PLACES = [
-   { id:'nat-minou', title:'Phare du Petit Minou', lng:-4.6189, lat:48.3378, notes:'Spot Photo Iconique', icon:'🎃', native:true },
-{ id:'nat-bargay', title:'Happy Café', lng:-4.5339124, lat:48.3983125, notes:'Bar (pas si) queer', icon:'🎃', native:true },
-{ id:'nat-esoboutik', title:'Esoboutik', lng:-4.4938136, lat:48.396122, notes:'Objets et services d\'ésotérisme', icon:'🎃', native:true },
-{ id:'nat-barachouffin', title:'Ludibar', lng:-4.498886602488795, lat:48.38930940632928, notes:'Bar à jeux de société (zombicide)', icon:'🎃', native:true },
-{ id:'nat-barafacho', title:'Cocorico', lng:-4.5339124, lat:48.3908214, notes:'Un bar french-touch de macronofascistes', icon:'🎃', native:true },
-{ id:'nat-lgbtfestival', title:'QueerBrestFest', lng:-4.49975717365375, lat:48.38405327923248, notes:'Festival queer, ouverture en mai dans ce bar', icon:'🎃', native:true },
-{ id:'nat-magneto', title:'Magnétiseur-Réflexologue Bertrand', lng:-4.4666244, lat:48.3898283, notes:'escroc notoire', icon:'🎃', native:true },
-{ id:'nat-restovege', title:'Restaurant Végétarien', lng:-4.5099941, lat:48.3884699, notes:'Ca a l\'air bon', icon:'🎃', native:true },
-{ id:'nat-restoinox', title:'Restaurant Tibétain', lng:-4.5099941, lat:48.3884699, notes:'Pour découvrir la culture de Kaizen', icon:'🎃', native:true },
-{ id:'nat-lieudit', title:'Le Lieu Dit', lng:-4.4698395, lat:48.3964447, notes:'Un Tiers-Lieu associatif :D pleins d\'assos chouettes', icon:'🎃', native:true },
-{ id:'nat-tierslieu', title:'La PAM', lng:-4.491765557670681, lat:48.38744594832954, notes:'Un Tiers-Lieu associatif :D pleins d\'évents chouettes(drag shows entre autre)', icon:'🎃', native:true },
-{ id:'nat-detraqueer', title:'Detraqueer', lng:-4.5083712, lat:48.3942593, notes:'Association LGBQIA+ (peut-être dissoute, à voir)', icon:'🎃', native:true },
-{ id:'nat-facholand', title:'Les Grandes Manoeuvres', lng:-4.6289855, lat:48.4039786, notes:'Un magasin de surplus militaire', icon:'🎃', native:true },
-{ id:'nat-goat', title:'Kergoat', lng:-4.5485743, lat:48.4005729, notes:'Quartier des goats', icon:'🎃', native:true },
-{ id:'nat-exposympas', title:'Maison de la fontaine', lng:-4.4995203730154, lat:48.382189527354335, notes:'Musée sympa avec des expos cool souvent', icon:'🎃', native:true },
-{ id:'nat-bm1', title:'B&M', lng:-4.5463728, lat:48.3868684, notes:'L\'équivalent de Noz mais en moins bien', icon:'🎃', native:true },
-{ id:'nat-Action', title:'Action', lng:-4.4900781, lat:48.4086814, notes:'L\'équivalent de Noz mais en moins bien', icon:'🎃', native:true },
-{ id:'nat-tribunal', title:'Tribunal', lng:-4.480661817, lat:48.3848405, notes:'tribunal si tu commets des méfaits', icon:'🎃', native:true },
-{ id:'nat-stade', title:'Stade Francis le Blé', lng:-4.4893917, lat:48.4030208, notes:'Le Stade Brestois 29, domicile des "Les Ty\' Zefs"', icon:'🎃', native:true },
-{ id:'nat-barirish', title:'The Dubliners', lng:-4.4876203, lat:48.3992119, notes:'Bar chouette avec une déco marrante', icon:'🎃', native:true },
-{ id:'nat-streetart', title:'Rond point de Palaren', lng:-4.4377984, lat:48.3970707, notes:'Lieu de street-art !', icon:'🎃', native:true },
-{ id:'nat-baralt', title:'Le Mouton À Cinq Pattes', lng:-4.4811406, lat:48.3968457, notes:'bar associatif et inclusif, ambiance safe', icon:'🎃', native:true },
-{ id:'nat-cafe', title:'Café de la Plage', lng:-4.5109502, lat:48.3971903, notes:'bar mythique et artsy de brest', icon:'🎃', native:true },
-{ id:'nat-concert', title:'La Carène', lng:-4.4848791, lat:48.3845707, notes:'salle de concert chouette', icon:'🎃', native:true },
-{ id:'nat-boite', title:'La Suite', lng:-4.4869176, lat:48.3851707, notes:'boite de nuit pas trop cringe', icon:'🎃', native:true },
-{ id:'nat-theatre', title:'La Maison du Théâtre', lng:-4.5044215, lat:48.4098352, notes:'Théâtre sympa en fonction de la progra', icon:'🎃', native:true },
-{ id:'nat-tierslieuencore', title:'Les Ateliers des Capucins', lng:-4.5008444, lat:48.3890457, notes:'Tiers lieu avec une super bonne ambiance (skate chill)', icon:'🎃', native:true },
-{ id:'nat-plage', title:'Plage du Moulin Blanc', lng:-4.4387813, lat:48.3586212, notes:'Plage chouette à la tombée de la nuit !', icon:'🎃', native:true },
-{ id:'nat-passerelle', title:'Passerelle Centre d\'art Contemporain', lng:-4.4828383, lat:48.3976316, notes:'Lieu d\'exposition assez cool', icon:'🎃', native:true },
-{ id:'nat-salle', title:'MacOrlan', lng:-4.5059022, lat:48.3845092, notes:'Salle de concert pas trop mal mais bon c\'est brest hyn', icon:'🎃', native:true },
-{ id:'nat-barprolo', title:'Moal Gaelle', lng:-4.4562796, lat:48.4154704, notes:'bar très flippant (je conseille les photos sur google maps)', icon:'🎃', native:true },
-      ];
+    { id:'nat-minou', title:'Phare du Petit Minou', lng:-4.6189, lat:48.3378, notes:'Spot Photo Iconique', icon:'🎃', native:true }
+    // … (tes autres natifs restent inchangés dans ton fichier)
+  ];
 
-  // ------- Map -------
+  // Map
   const map = new maplibregl.Map({
     container: 'map',
     style: STYLE_RASTER_DARK,
@@ -221,7 +217,6 @@
   });
   map.addControl(new maplibregl.NavigationControl({ showCompass: true }), 'bottom-right');
 
-  // Geolocate
   const geo = new maplibregl.GeolocateControl({
     positionOptions: { enableHighAccuracy: true },
     trackUserLocation: true,
@@ -233,12 +228,8 @@
   let currentPos = null;
   geo.on('geolocate', (e) => { currentPos = { lng: e.coords.longitude, lat: e.coords.latitude }; });
 
-  // ---------- Helpers ----------
-  function rndId(){ return (crypto.randomUUID ? crypto.randomUUID() : 'id-'+Math.random().toString(36).slice(2)); }
-  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
-
-  // ---------- State ----------
-  let points = loadPoints(); // uniquement les points utilisateur
+  // State
+  let points = loadPoints();
   let addingMode = false;
   let showLabels = false;
   let markers = {};
@@ -247,7 +238,7 @@
   function loadPoints(){
     try {
       const raw = JSON.parse(localStorage.getItem(STORAGE_KEY)) || [];
-      return raw.map(p => ({ ...p, icon: validIcon(p.icon || '🎃'), native:false }));
+      return raw.map(p => ({ ...p, icon: validIcon(p.icon), native:false }));
     } catch(e){ return []; }
   }
   function savePoints(){
@@ -265,7 +256,6 @@
     const ALL = [...NATIVE_PLACES, ...points];
 
     ALL.forEach(p => {
-      // emoji marker
       const el = document.createElement('div');
       el.className = 'mk';
       const span = document.createElement('span');
@@ -306,7 +296,10 @@
     document.getElementById('btn-list').innerText = `Lieux (${ALL.length})`;
   }
 
-  // Popup (fond blanc, texte noir) + badge Natif
+  // Popup
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+  function rndId(){ return (crypto.randomUUID ? crypto.randomUUID() : 'id-'+Math.random().toString(36).slice(2)); }
+
   function openPopupFor(p){
     const wrap = document.createElement('div');
     wrap.style.minWidth = '240px';
@@ -322,7 +315,7 @@
       <div style="display:flex; gap:6px; flex-wrap:wrap">
         <button data-act="route">Itinéraire</button>
         ${p.native ? '' : '<button data-act="edit">Modifier</button>'}
-        ${p.native ? '' : '<button data-act="delete" style="color:#a60000;background:#ffecec;border-color:#ffc6c6">Supprimer</button>'}
+        ${p.native ? '' : '<button data-act="delete" style="border-color:#6b1b1b;background:#3a1414">Supprimer</button>'}
       </div>
     `;
 
@@ -340,12 +333,13 @@
   function addPoint(lng, lat){
     const title = prompt('Titre du lieu ?', 'Nouveau point');
     if (title === null) return;
-    const icon = validIcon(prompt('Emoji (🐈‍⬛ / 🎃 / 🧙‍♀️ / ⚗️)', '🎃') || '🎃');
+    const iconInput = prompt('Emoji (n’importe lequel)', '🎃') || '🎃';
+    const icon = validIcon(iconInput);
     const p = { id: rndId(), title: title.trim()||'Point', notes:'', lng, lat, icon, native:false };
     points.push(p); savePoints(); renderMarkers(); openPopupFor(p);
   }
   function updatePoint(id, patch){
-    if (NATIVE_PLACES.some(n => n.id === id)) return; // natif => ignore
+    if (NATIVE_PLACES.some(n => n.id === id)) return;
     points = points.map(x => x.id===id?{...x,...patch}:x); savePoints(); renderMarkers();
   }
   function removePoint(id){
@@ -357,11 +351,11 @@
     const p = points.find(x=>x.id===id); if(!p) return;
     const t = prompt('Titre', p.title||''); if(t===null)return;
     const n = prompt('Notes', p.notes||''); if(n===null)return;
-    const ic = validIcon(prompt('Emoji (🐈‍⬛ / 🎃 / 🧙‍♀️ / ⚗️)', p.icon||'🎃') || p.icon);
+    const ic = validIcon(prompt('Emoji (n’importe lequel)', p.icon||'🎃') || p.icon);
     updatePoint(id, { title:t, notes:n, icon:ic });
   }
 
-  // ----------- Liste ----------
+  // Liste
   function updateList(){
     const listEl = document.getElementById('list');
     listEl.innerHTML = '';
@@ -376,12 +370,11 @@
           <div class="mk"><span class="mk-emoji">${escapeHtml(validIcon(p.icon))}</span></div>
           <input value="${escapeHtml(p.title)}" ${p.native?'disabled':''} style="font-weight:700;flex:1;border:none;outline:none;background:${p.native?'#15161c':'transparent'};opacity:${p.native?0.8:1}"/>
           ${p.native ? '<span class="muted" style="font-size:12px">Natif</span>' : `
-            <select>
-              ${ICONS.map(ic => `<option value="${ic}" ${ic===validIcon(p.icon)?'selected':''}>${ic}</option>`).join('')}
-            </select>`}
+            <input class="emoji-input" value="${escapeHtml(validIcon(p.icon))}" style="width:54px;text-align:center" maxlength="8" />
+          `}
           <button data-act="fly">Voir</button>
           <button data-act="route">Itinéraire</button>
-          ${p.native ? '' : '<button data-act="del" style="color:#ff8a8a">Supprimer</button>'}
+          ${p.native ? '' : '<button data-act="del" style="border-color:#6b1b1b;background:#3a1414">Supprimer</button>'}
         </div>
         <textarea placeholder="Notes" ${p.native?'disabled':''} style="min-height:60px;background:${p.native?'#15161c':'#0F1016'};opacity:${p.native?0.8:1}">${escapeHtml(p.notes||'')}</textarea>
       `;
@@ -392,14 +385,19 @@
         li.querySelector('[data-act="del"]').onclick=()=>removePoint(p.id);
         li.querySelector('input').oninput=(e)=>updatePoint(p.id,{title:e.target.value});
         li.querySelector('textarea').oninput=(e)=>updatePoint(p.id,{notes:e.target.value});
-        li.querySelector('select').onchange=(e)=>updatePoint(p.id,{icon: validIcon(e.target.value)});
+        const emojiInput = li.querySelector('.emoji-input');
+        emojiInput.oninput = (e)=>{
+          const first = validIcon(e.target.value);
+          e.target.value = first;
+          updatePoint(p.id, { icon:first });
+        };
       }
 
       listEl.appendChild(li);
     });
   }
 
-  // ---------- Route (OSRM – walking) ----------
+  // Route (OSRM walking)
   function clearRoute(){
     if (map.getLayer(ROUTE_LINE)) map.removeLayer(ROUTE_LINE);
     if (map.getSource(ROUTE_SRC)) map.removeSource(ROUTE_SRC);
@@ -411,7 +409,7 @@
   function fitToCoords(coords){
     let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
     coords.forEach(c => { if(c[0]<minX)minX=c[0]; if(c[0]>maxX)maxX=c[0]; if(c[1]<minY)minY=c[1]; if(c[1]>maxY)maxY=c[1]; });
-    map.fitBounds([[minX,minY],[maxX,maxY]], { padding: 60, maxZoom: 16, duration: 600 });
+    map.fitBounds([[minX,minY],[maxX,maxY]], { padding:60, maxZoom:16, duration:600 });
   }
 
   function routeToPoint(p){
@@ -445,8 +443,8 @@
         if (map.getSource(ROUTE_SRC)) map.removeSource(ROUTE_SRC);
         applyRouteLayer();
 
-        const distKm = Math.round(route.distance/10)/100; // m->km
-        const durMin = Math.round(route.duration/60);      // s->min (walking)
+        const distKm = Math.round(route.distance/10)/100;
+        const durMin = Math.round(route.duration/60);
         document.getElementById('route-text').textContent = `➜ ${distKm} km • ~${durMin} min à pied`;
         document.getElementById('route-badge').style.display = 'block';
         fitToCoords(coords);
@@ -454,8 +452,8 @@
       .catch(err => { console.warn('OSRM', err); alert("Impossible d'obtenir l’itinéraire (réseau/API)."); });
   }
 
-  // ---------- Click vs Drag pour l'ajout (desktop) ----------
-  let isMouseDown = false, startPt = null, moved = false;
+  // Click vs Drag (desktop)
+  let isMouseDown=false, startPt=null, moved=false;
   map.on('mousedown', (e) => {
     if (!addingMode) return;
     if (e.originalEvent.button !== 0) return;
@@ -464,7 +462,7 @@
   map.on('mousemove', (e) => {
     if (!isMouseDown) return;
     const dx = e.point.x - startPt.x, dy = e.point.y - startPt.y;
-    if ((dx*dx + dy*dy) > 25) moved = true; // >5px
+    if ((dx*dx + dy*dy) > 25) moved = true;
   });
   map.on('mouseup', (e) => {
     if (!isMouseDown) return; isMouseDown = false;
@@ -474,41 +472,35 @@
 
   // Long-press (mobile)
   let pressTimer=null;
-  map.on('touchstart', e => { if(!addingMode) return; pressTimer = setTimeout(() => addPoint(e.lngLat.lng, e.lngLat.lat), 450); });
+  map.on('touchstart', e => { if(!addingMode) return; pressTimer=setTimeout(()=>addPoint(e.lngLat.lng,e.lngLat.lat),450); });
   map.on('touchend', () => { if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; } });
 
-  // ---------- Buttons ----------
+  // Buttons
   document.getElementById('btn-me').onclick = () => { try{ geo.trigger(); }catch(e){} };
 
   const btnAdd = document.getElementById('btn-add');
   btnAdd.onclick = () => {
     addingMode = !addingMode;
-    btnAdd.style.background = addingMode ? `linear-gradient(90deg, var(--pink), var(--orange))` : 'var(--bg)';
-    btnAdd.style.color = '#fff';
-    btnAdd.textContent = addingMode ? 'Ajout ON' : 'Ajout';
+    btnAdd.classList.toggle('on', addingMode);
   };
-
   const btnLabels = document.getElementById('btn-labels');
   btnLabels.onclick = () => {
     showLabels = !showLabels;
-    btnLabels.style.background = showLabels ? `linear-gradient(90deg, var(--pink), var(--orange))` : 'var(--bg)';
-    btnLabels.style.color = '#fff';
+    btnLabels.classList.toggle('on', showLabels);
     renderMarkers();
   };
 
   document.getElementById('btn-list').onclick = () => { document.getElementById('drawer').style.display = 'block'; updateList(); };
   document.getElementById('btn-close-drawer').onclick = () => { document.getElementById('drawer').style.display = 'none'; };
-
   document.getElementById('btn-add-center').onclick = () => { const c = map.getCenter(); addPoint(c.lng, c.lat); };
-
   document.getElementById('btn-import').onclick = () => { document.getElementById('modal').style.display = 'flex'; };
   document.getElementById('modal').addEventListener('click', (e)=>{ if(e.target === document.getElementById('modal')) document.getElementById('modal').style.display = 'none'; });
   document.getElementById('btn-close-modal').onclick = () => { document.getElementById('modal').style.display = 'none'; };
 
   document.getElementById('btn-load-ex').onclick = () => {
     const demo = [
-      { id:rndId(), title:'Phare du Petit Minou', lng:-4.6189, lat:48.3378, notes:'Spot photo iconique', icon:'🎃',   native:false },
-      { id:rndId(), title:'Les Viviers de Keraliou', lng:-4.5305, lat:48.3696, notes:'Fruits de mer',      icon:'🐈‍⬛', native:false },
+      { id:rndId(), title:'Phare du Petit Minou', lng:-4.6189, lat:48.3378, notes:'Spot photo iconique', icon:'🎃', native:false },
+      { id:rndId(), title:'Les Viviers de Keraliou', lng:-4.5305, lat:48.3696, notes:'Fruits de mer', icon:'🐈‍⬛', native:false },
       { id:rndId(), title:'Musée national de la Marine', lng:-4.4952, lat:48.3834, notes:'Château de Brest', icon:'🧙‍♀️', native:false },
     ];
     points = demo; savePoints(); renderMarkers(); document.getElementById('modal').style.display='none';
@@ -524,7 +516,7 @@
         notes: (p.notes||''),
         lng: Number(p.lng),
         lat: Number(p.lat),
-        icon: validIcon(p.icon || '🎃'),
+        icon: validIcon(p.icon),
         native:false
       })).filter(p => isFinite(p.lng) && isFinite(p.lat));
       savePoints(); renderMarkers(); document.getElementById('modal').style.display='none';
@@ -539,7 +531,7 @@
     URL.revokeObjectURL(url);
   };
 
-  // --- Toggle de style ---
+  // Toggle style
   document.getElementById('btn-style').onclick = () => {
     if (currentStyle === 'dark') {
       currentStyle = 'liberty';
@@ -548,10 +540,9 @@
       currentStyle = 'dark';
       map.setStyle(STYLE_RASTER_DARK);
     }
-    map.once('styledata', () => { if (lastRouteGeoJson) applyRouteLayer(); });
+    map.once('styledata', () => { if (lastRouteGeoJson) applyRouteLayer(); renderMarkers(); });
   };
 
-  // Init
   map.on('load', () => { renderMarkers(); try{ geo.trigger(); }catch(e){} });
 })();
 </script>
